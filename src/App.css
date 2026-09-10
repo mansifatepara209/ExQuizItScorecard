@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============ DARK MODE (Default) ============ */
+:root {
+  --quiz-primary: 10 10 26;
+  --quiz-secondary: 26 26 46;
+  --quiz-accent: 22 33 62;
+  --quiz-gold: 233 69 96;
+  --quiz-text: 255 255 255;
+  --quiz-muted: 156 163 175;
+  --quiz-border: 31 41 55;
+}
+
+/* ============ LIGHT MODE ============ */
+:root.light {
+  --quiz-primary: 248 250 252;
+  --quiz-secondary: 255 255 255;
+  --quiz-accent: 241 245 249;
+  --quiz-gold: 233 69 96;
+  --quiz-text: 15 23 42;
+  --quiz-muted: 100 116 139;
+  --quiz-border: 226 232 240;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: rgb(var(--quiz-primary));
+  color: rgb(var(--quiz-text));
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: rgb(var(--quiz-secondary)); }
+::-webkit-scrollbar-thumb { background: rgb(var(--quiz-gold)); border-radius: 4px; }
+
+* {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
