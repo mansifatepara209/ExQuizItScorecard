@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { TeamService, RankingService } from '../services/api';
-import { Plus, Trash2, Edit, Search, RefreshCw, X, ArrowUp, ArrowDown, Trophy } from 'lucide-react';
+import {
+    Plus, Trash2, Edit, Search, RefreshCw, X,
+    ArrowUp, ArrowDown, Trophy, Users
+} from 'lucide-react';
 
 function TeamManager({ eventId = 1, onUpdate }) {
     const [teams, setTeams] = useState([]);
@@ -16,23 +19,16 @@ function TeamManager({ eventId = 1, onUpdate }) {
         try {
             const teamRes = await TeamService.getWithMembers(eventId);
             const rankRes = await RankingService.getRankings(eventId);
-
             const scoreMap = {};
-            rankRes.data.forEach(r => {
-                scoreMap[r.id] = { score: r.total_score, rank: r.rank };
-            });
-
+            rankRes.data.forEach(r => { scoreMap[r.id] = { score: r.total_score, rank: r.rank }; });
             const enriched = teamRes.data.map(t => ({
                 ...t,
                 total_score: scoreMap[t.id]?.score || 0,
                 rank: scoreMap[t.id]?.rank || '-'
             }));
-
             enriched.sort((a, b) => a.team_order - b.team_order);
             setTeams(enriched);
-        } catch (e) {
-            console.error('Load error:', e);
-        }
+        } catch (e) { console.error(e); }
     };
 
     const submit = async (e) => {
@@ -48,44 +44,25 @@ function TeamManager({ eventId = 1, onUpdate }) {
 
     const del = async (id) => {
         if (!window.confirm('Delete team?')) return;
-        try {
-            await TeamService.delete(id);
-            await load();
-            if (onUpdate) onUpdate();
-        } catch (e) { alert('Error: ' + e.message); }
+        try { await TeamService.delete(id); await load(); if (onUpdate) onUpdate(); }
+        catch (e) { alert('Error: ' + e.message); }
     };
 
     const moveTeam = async (index, direction) => {
         const newIndex = index + direction;
         if (newIndex < 0 || newIndex >= teams.length) return;
-
         const newTeams = [...teams];
         const [moved] = newTeams.splice(index, 1);
         newTeams.splice(newIndex, 0, moved);
-
         const updatedTeams = newTeams.map((t, i) => ({ ...t, team_order: i + 1 }));
         setTeams(updatedTeams);
         setReordering(true);
-
         try {
             await TeamService.reorder(updatedTeams.map(t => ({ id: t.id, order: t.team_order })));
-            const rankRes = await RankingService.getRankings(eventId);
-            const scoreMap = {};
-            rankRes.data.forEach(r => {
-                scoreMap[r.id] = { score: r.total_score, rank: r.rank };
-            });
-            setTeams(prev => prev.map(t => ({
-                ...t,
-                total_score: scoreMap[t.id]?.score || 0,
-                rank: scoreMap[t.id]?.rank || '-'
-            })));
         } catch (e) {
-            console.error('Reorder failed:', e);
-            alert('Failed to save order: ' + e.message);
+            alert('Failed: ' + e.message);
             await load();
-        } finally {
-            setReordering(false);
-        }
+        } finally { setReordering(false); }
     };
 
     const resetForm = () => setForm({ name: '', shortName: '', institution: '', members: '' });
@@ -93,10 +70,8 @@ function TeamManager({ eventId = 1, onUpdate }) {
     const edit = (t) => {
         setEditing(t);
         setForm({
-            name: t.name,
-            shortName: t.short_name,
-            institution: t.institution || '',
-            members: t.members || ''
+            name: t.name, shortName: t.short_name,
+            institution: t.institution || '', members: t.members || ''
         });
         setModal(true);
     };
@@ -107,175 +82,278 @@ function TeamManager({ eventId = 1, onUpdate }) {
     );
 
     return (
-        <div className="bg-quiz-secondary p-6 rounded-lg border border-quiz-border">
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-quiz-gold">
-                    Teams ({teams.length})
-                    {reordering && <span className="text-sm text-yellow-400 ml-3">Saving order...</span>}
-                </h2>
+        <div className="space-y-4 md:space-y-6">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+                <div>
+                    <h2 className="text-xl md:text-2xl font-bold text-quiz-gold">
+                        Teams ({teams.length})
+                        {reordering && <span className="text-xs text-yellow-400 ml-2">Saving...</span>}
+                    </h2>
+                    <p className="text-xs md:text-sm text-quiz-muted mt-1 hidden sm:block">
+                        Manage teams and their members
+                    </p>
+                </div>
                 <div className="flex gap-2">
                     <button
                         onClick={() => { resetForm(); setEditing(null); setModal(true); }}
-                        className="px-4 py-2 bg-quiz-gold text-white rounded flex items-center gap-2 hover:opacity-80"
+                        className="flex-1 sm:flex-none px-3 md:px-4 py-2 bg-quiz-gold hover:opacity-80 text-white rounded-lg flex items-center justify-center gap-2 text-sm font-semibold transition"
                     >
-                        <Plus size={18} /> Add Team
+                        <Plus size={16} md:size={18} /> Add Team
                     </button>
-                    <button onClick={load} className="px-4 py-2 bg-quiz-accent text-quiz-text rounded flex items-center gap-2 hover:opacity-80">
-                        <RefreshCw size={18} />
+                    <button onClick={load} className="px-3 md:px-4 py-2 bg-quiz-accent border border-quiz-border text-quiz-text rounded-lg flex items-center justify-center gap-2 transition hover:border-quiz-gold">
+                        <RefreshCw size={16} md:size={18} />
                     </button>
                 </div>
             </div>
 
-            <div className="relative mb-4">
+            {/* Search */}
+            <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-quiz-muted" size={18} />
                 <input
                     type="text"
                     placeholder="Search teams..."
                     value={search}
                     onChange={e => setSearch(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 bg-quiz-primary border border-quiz-border rounded text-quiz-text placeholder:text-quiz-muted focus:outline-none focus:border-quiz-gold"
+                    className="w-full pl-10 pr-4 py-2.5 bg-quiz-secondary border border-quiz-border rounded-lg text-quiz-text placeholder:text-quiz-muted focus:outline-none focus:border-quiz-gold text-sm md:text-base"
                 />
             </div>
 
-            <div className="overflow-x-auto">
-                <table className="w-full">
-                    <thead className="bg-quiz-accent">
-                        <tr>
-                            <th className="px-2 py-3 text-center w-16 text-quiz-text">Order</th>
-                            <th className="px-2 py-3 text-center w-20 text-quiz-text">Move</th>
-                            <th className="px-4 py-3 text-left text-quiz-text">Team</th>
-                            <th className="px-4 py-3 text-left text-quiz-text">Short</th>
-                            <th className="px-4 py-3 text-left text-quiz-text">Institution</th>
-                            <th className="px-4 py-3 text-left text-quiz-text">Members</th>
-                            <th className="px-4 py-3 text-center text-quiz-text">Score</th>
-                            <th className="px-4 py-3 text-center text-quiz-text">Rank</th>
-                            <th className="px-4 py-3 text-left text-quiz-text">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {filtered.map((t) => {
-                            const realIndex = teams.findIndex(x => x.id === t.id);
-                            return (
-                                <tr key={t.id} className="border-t border-quiz-border hover:bg-quiz-accent/50 transition">
-                                    <td className="px-2 py-3 text-center">
-                                        <span className="text-2xl font-bold text-quiz-gold">{t.team_order}</span>
-                                    </td>
-                                    <td className="px-2 py-3">
-                                        <div className="flex flex-col items-center gap-1">
-                                            <button
-                                                onClick={() => moveTeam(realIndex, -1)}
-                                                disabled={realIndex === 0 || reordering}
-                                                className="p-1 hover:text-quiz-gold transition disabled:opacity-30 disabled:cursor-not-allowed text-quiz-muted"
-                                                title="Move Up"
-                                            >
-                                                <ArrowUp size={18} />
-                                            </button>
-                                            <button
-                                                onClick={() => moveTeam(realIndex, 1)}
-                                                disabled={realIndex === teams.length - 1 || reordering}
-                                                className="p-1 hover:text-quiz-gold transition disabled:opacity-30 disabled:cursor-not-allowed text-quiz-muted"
-                                                title="Move Down"
-                                            >
-                                                <ArrowDown size={18} />
-                                            </button>
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-3 font-semibold text-quiz-text">{t.name}</td>
-                                    <td className="px-4 py-3 text-quiz-text">{t.short_name}</td>
-                                    <td className="px-4 py-3 text-quiz-muted">{t.institution || '-'}</td>
-                                    <td className="px-4 py-3">
-                                        {t.member_details?.length > 0 ? (
-                                            <div className="text-sm space-y-0.5">
-                                                {t.member_details.map((m, i) => (
-                                                    <div key={i} className="text-quiz-muted">
-                                                        {i + 1}. {m.member_name}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <span className="text-quiz-muted">{t.member_count || 0}</span>
-                                        )}
-                                    </td>
-                                    <td className="px-4 py-3 text-center">
-                                        <span className="text-2xl font-bold text-quiz-gold">{t.total_score}</span>
-                                    </td>
-                                    <td className="px-4 py-3 text-center">
-                                        <div className="flex items-center justify-center gap-1">
-                                            {t.rank === 1 && <Trophy size={16} className="text-yellow-400" />}
-                                            <span className={`font-bold ${t.rank === 1 ? 'text-yellow-400' :
-                                                    t.rank === 2 ? 'text-gray-400' :
-                                                        t.rank === 3 ? 'text-orange-500' : 'text-quiz-muted'
-                                                }`}>
-                                                #{t.rank}
-                                            </span>
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <div className="flex gap-2">
-                                            <button onClick={() => edit(t)} className="p-1 hover:text-quiz-gold text-quiz-muted">
-                                                <Edit size={18} />
-                                            </button>
-                                            <button onClick={() => del(t.id)} className="p-1 hover:text-red-500 text-quiz-muted">
-                                                <Trash2 size={18} />
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
+            {/* ============ MOBILE: Card layout ============ */}
+            <div className="lg:hidden space-y-3">
+                {filtered.map((t) => {
+                    const realIndex = teams.findIndex(x => x.id === t.id);
+                    return (
+                        <div key={t.id} className="bg-quiz-secondary rounded-lg border border-quiz-border p-3 space-y-3">
+                            {/* Top: Order + Team + Actions */}
+                            <div className="flex items-start gap-3">
+                                <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-quiz-gold flex items-center justify-center">
+                                    <span className="text-white font-black text-lg">{t.team_order}</span>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="font-bold text-quiz-text text-base truncate">{t.name}</p>
+                                    <p className="text-xs text-quiz-muted truncate">
+                                        {t.short_name}
+                                        {t.institution && ` • ${t.institution}`}
+                                    </p>
+                                </div>
+                                <div className="flex gap-1 flex-shrink-0">
+                                    <button onClick={() => edit(t)} className="p-2 rounded-lg text-quiz-muted hover:text-quiz-gold hover:bg-quiz-accent transition">
+                                        <Edit size={16} />
+                                    </button>
+                                    <button onClick={() => del(t.id)} className="p-2 rounded-lg text-quiz-muted hover:text-red-500 hover:bg-red-500/10 transition">
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Middle: Score + Rank */}
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="bg-quiz-primary rounded-lg p-2 text-center">
+                                    <p className="text-[10px] text-quiz-muted uppercase font-semibold">Score</p>
+                                    <p className="text-2xl font-black text-quiz-gold">{t.total_score}</p>
+                                </div>
+                                <div className="bg-quiz-primary rounded-lg p-2 text-center">
+                                    <p className="text-[10px] text-quiz-muted uppercase font-semibold">Rank</p>
+                                    <p className={`text-2xl font-black flex items-center justify-center gap-1 ${t.rank === 1 ? 'text-yellow-400' :
+                                            t.rank === 2 ? 'text-gray-300' :
+                                                t.rank === 3 ? 'text-orange-500' : 'text-quiz-text'
+                                        }`}>
+                                        {t.rank === 1 && <Trophy size={16} />}
+                                        #{t.rank}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Members */}
+                            {t.member_details?.length > 0 && (
+                                <div className="flex flex-wrap gap-1">
+                                    {t.member_details.map((m, i) => (
+                                        <span key={i} className="text-xs px-2 py-1 bg-quiz-accent text-quiz-muted rounded">
+                                            {m.member_name}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Move buttons */}
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => moveTeam(realIndex, -1)}
+                                    disabled={realIndex === 0 || reordering}
+                                    className="flex-1 py-2 bg-quiz-primary border border-quiz-border rounded-lg text-quiz-text hover:border-quiz-gold transition disabled:opacity-30 flex items-center justify-center gap-1 text-sm"
+                                >
+                                    <ArrowUp size={14} /> Move Up
+                                </button>
+                                <button
+                                    onClick={() => moveTeam(realIndex, 1)}
+                                    disabled={realIndex === teams.length - 1 || reordering}
+                                    className="flex-1 py-2 bg-quiz-primary border border-quiz-border rounded-lg text-quiz-text hover:border-quiz-gold transition disabled:opacity-30 flex items-center justify-center gap-1 text-sm"
+                                >
+                                    <ArrowDown size={14} /> Move Down
+                                </button>
+                            </div>
+                        </div>
+                    );
+                })}
                 {filtered.length === 0 && (
-                    <p className="text-center text-quiz-muted py-8">
-                        {search ? 'No matches' : 'No teams yet'}
-                    </p>
+                    <div className="text-center py-12 bg-quiz-secondary border border-dashed border-quiz-border rounded-lg">
+                        <Users size={40} className="text-quiz-muted mx-auto mb-3" />
+                        <p className="text-quiz-muted">{search ? 'No matches' : 'No teams yet'}</p>
+                    </div>
                 )}
             </div>
 
+            {/* ============ DESKTOP: Table layout ============ */}
+            <div className="hidden lg:block bg-quiz-secondary rounded-lg border border-quiz-border overflow-hidden">
+                <div className="overflow-x-auto">
+                    <table className="w-full">
+                        <thead className="bg-quiz-accent">
+                            <tr>
+                                <th className="px-3 py-3 text-center text-xs font-bold text-quiz-text uppercase tracking-wider">Order</th>
+                                <th className="px-3 py-3 text-center text-xs font-bold text-quiz-text uppercase tracking-wider">Move</th>
+                                <th className="px-4 py-3 text-left text-xs font-bold text-quiz-text uppercase tracking-wider">Team</th>
+                                <th className="px-4 py-3 text-left text-xs font-bold text-quiz-text uppercase tracking-wider">Institution</th>
+                                <th className="px-4 py-3 text-left text-xs font-bold text-quiz-text uppercase tracking-wider">Members</th>
+                                <th className="px-4 py-3 text-center text-xs font-bold text-quiz-text uppercase tracking-wider">Score</th>
+                                <th className="px-4 py-3 text-center text-xs font-bold text-quiz-text uppercase tracking-wider">Rank</th>
+                                <th className="px-4 py-3 text-left text-xs font-bold text-quiz-text uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filtered.map((t) => {
+                                const realIndex = teams.findIndex(x => x.id === t.id);
+                                return (
+                                    <tr key={t.id} className="border-t border-quiz-border hover:bg-quiz-primary/50 transition">
+                                        <td className="px-3 py-3 text-center">
+                                            <span className="text-2xl font-black text-quiz-gold">{t.team_order}</span>
+                                        </td>
+                                        <td className="px-3 py-3">
+                                            <div className="flex flex-col items-center gap-1">
+                                                <button
+                                                    onClick={() => moveTeam(realIndex, -1)}
+                                                    disabled={realIndex === 0 || reordering}
+                                                    className="p-1 hover:text-quiz-gold transition disabled:opacity-30 text-quiz-muted"
+                                                >
+                                                    <ArrowUp size={16} />
+                                                </button>
+                                                <button
+                                                    onClick={() => moveTeam(realIndex, 1)}
+                                                    disabled={realIndex === teams.length - 1 || reordering}
+                                                    className="p-1 hover:text-quiz-gold transition disabled:opacity-30 text-quiz-muted"
+                                                >
+                                                    <ArrowDown size={16} />
+                                                </button>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <p className="font-semibold text-quiz-text">{t.name}</p>
+                                            <p className="text-xs text-quiz-muted">{t.short_name}</p>
+                                        </td>
+                                        <td className="px-4 py-3 text-quiz-muted text-sm">{t.institution || '-'}</td>
+                                        <td className="px-4 py-3">
+                                            {t.member_details?.length > 0 ? (
+                                                <div className="text-xs space-y-0.5">
+                                                    {t.member_details.map((m, i) => (
+                                                        <div key={i} className="text-quiz-muted">• {m.member_name}</div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <span className="text-quiz-muted text-sm">{t.member_count || 0}</span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3 text-center">
+                                            <span className="text-xl font-black text-quiz-gold">{t.total_score}</span>
+                                        </td>
+                                        <td className="px-4 py-3 text-center">
+                                            <div className="flex items-center justify-center gap-1">
+                                                {t.rank === 1 && <Trophy size={14} className="text-yellow-400" />}
+                                                <span className={`font-bold ${t.rank === 1 ? 'text-yellow-400' :
+                                                        t.rank === 2 ? 'text-gray-300' :
+                                                            t.rank === 3 ? 'text-orange-500' : 'text-quiz-muted'
+                                                    }`}>
+                                                    #{t.rank}
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <div className="flex gap-1">
+                                                <button onClick={() => edit(t)} className="p-1.5 rounded hover:bg-quiz-accent text-quiz-muted hover:text-quiz-gold transition">
+                                                    <Edit size={16} />
+                                                </button>
+                                                <button onClick={() => del(t.id)} className="p-1.5 rounded hover:bg-red-500/10 text-quiz-muted hover:text-red-500 transition">
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                    {filtered.length === 0 && (
+                        <div className="text-center py-12">
+                            <Users size={40} className="text-quiz-muted mx-auto mb-3" />
+                            <p className="text-quiz-muted">{search ? 'No matches' : 'No teams yet'}</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* ============ MODAL ============ */}
             {modal && (
-                <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
-                    <div className="bg-quiz-secondary p-6 rounded-lg w-full max-w-2xl border border-quiz-border">
-                        <div className="flex justify-between mb-4">
-                            <h3 className="text-xl font-bold text-quiz-text">{editing ? 'Edit' : 'Add'} Team</h3>
-                            <button onClick={() => { setModal(false); setEditing(null); resetForm(); }} className="text-quiz-muted hover:text-quiz-text">
-                                <X size={24} />
+                <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-3 md:p-4">
+                    <div className="bg-quiz-secondary rounded-xl border border-quiz-border w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                        <div className="flex justify-between items-center p-4 md:p-6 border-b border-quiz-border sticky top-0 bg-quiz-secondary z-10">
+                            <h3 className="text-lg md:text-xl font-bold text-quiz-text">
+                                {editing ? 'Edit' : 'Add'} Team
+                            </h3>
+                            <button
+                                onClick={() => { setModal(false); setEditing(null); resetForm(); }}
+                                className="p-1 rounded hover:bg-quiz-accent text-quiz-muted hover:text-quiz-text transition"
+                            >
+                                <X size={22} />
                             </button>
                         </div>
-                        <form onSubmit={submit} className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
+                        <form onSubmit={submit} className="p-4 md:p-6 space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm mb-1 text-quiz-text">Team Name *</label>
+                                    <label className="block text-sm font-medium mb-1 text-quiz-text">Team Name *</label>
                                     <input type="text" required value={form.name}
                                         onChange={e => setForm({ ...form, name: e.target.value })}
-                                        className="w-full px-3 py-2 bg-quiz-primary border border-quiz-border rounded text-quiz-text focus:outline-none focus:border-quiz-gold" />
+                                        className="w-full px-3 py-2 bg-quiz-primary border border-quiz-border rounded-lg text-quiz-text focus:outline-none focus:border-quiz-gold" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm mb-1 text-quiz-text">Short Name *</label>
+                                    <label className="block text-sm font-medium mb-1 text-quiz-text">Short Name *</label>
                                     <input type="text" required value={form.shortName}
                                         onChange={e => setForm({ ...form, shortName: e.target.value })}
-                                        className="w-full px-3 py-2 bg-quiz-primary border border-quiz-border rounded text-quiz-text focus:outline-none focus:border-quiz-gold" />
+                                        className="w-full px-3 py-2 bg-quiz-primary border border-quiz-border rounded-lg text-quiz-text focus:outline-none focus:border-quiz-gold" />
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-sm mb-1 text-quiz-text">Institution</label>
+                                <label className="block text-sm font-medium mb-1 text-quiz-text">Institution</label>
                                 <input type="text" value={form.institution}
                                     onChange={e => setForm({ ...form, institution: e.target.value })}
-                                    className="w-full px-3 py-2 bg-quiz-primary border border-quiz-border rounded text-quiz-text focus:outline-none focus:border-quiz-gold" />
+                                    className="w-full px-3 py-2 bg-quiz-primary border border-quiz-border rounded-lg text-quiz-text focus:outline-none focus:border-quiz-gold" />
                             </div>
                             <div>
-                                <label className="block text-sm mb-1 text-quiz-text">Members (separate with ; or ,)</label>
+                                <label className="block text-sm font-medium mb-1 text-quiz-text">
+                                    Members <span className="text-quiz-muted">(separate with ; or ,)</span>
+                                </label>
                                 <input type="text" value={form.members}
                                     onChange={e => setForm({ ...form, members: e.target.value })}
                                     placeholder="Alice; Bob; Carol"
-                                    className="w-full px-3 py-2 bg-quiz-primary border border-quiz-border rounded text-quiz-text focus:outline-none focus:border-quiz-gold" />
+                                    className="w-full px-3 py-2 bg-quiz-primary border border-quiz-border rounded-lg text-quiz-text focus:outline-none focus:border-quiz-gold" />
                             </div>
-                            <div className="flex gap-3">
-                                <button type="submit" className="flex-1 py-2 bg-quiz-gold text-white rounded hover:opacity-80">
-                                    {editing ? 'Update' : 'Create'}
-                                </button>
+                            <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3 pt-2">
                                 <button type="button"
                                     onClick={() => { setModal(false); setEditing(null); resetForm(); }}
-                                    className="px-6 py-2 bg-quiz-accent text-quiz-text rounded hover:opacity-80">Cancel</button>
+                                    className="w-full sm:w-auto px-6 py-2.5 bg-quiz-accent text-quiz-text rounded-lg font-semibold hover:border-quiz-gold transition">
+                                    Cancel
+                                </button>
+                                <button type="submit" className="w-full sm:flex-1 py-2.5 bg-quiz-gold hover:opacity-80 text-white rounded-lg font-bold transition">
+                                    {editing ? 'Update' : 'Create'} Team
+                                </button>
                             </div>
                         </form>
                     </div>

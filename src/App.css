@@ -2,41 +2,187 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ============ DARK MODE (Default) ============ */
+/* ============ THEME VARIABLES — DARK (DEFAULT) ============ */
 :root {
-  --quiz-primary: 10 10 26;
-  --quiz-secondary: 26 26 46;
-  --quiz-accent: 22 33 62;
-  --quiz-gold: 233 69 96;
+  --quiz-primary: 10 10 26;          /* #0a0a1a */
+  --quiz-secondary: 26 26 46;        /* #1a1a2e */
+  --quiz-accent: 22 33 62;           /* #16213e */
+  --quiz-gold: 233 69 96;            /* #e94560 */
   --quiz-text: 255 255 255;
   --quiz-muted: 156 163 175;
   --quiz-border: 31 41 55;
 }
 
-/* ============ LIGHT MODE ============ */
+/* ============ THEME VARIABLES — LIGHT ============ */
 :root.light {
-  --quiz-primary: 248 250 252;
-  --quiz-secondary: 255 255 255;
-  --quiz-accent: 241 245 249;
-  --quiz-gold: 233 69 96;
-  --quiz-text: 15 23 42;
-  --quiz-muted: 100 116 139;
-  --quiz-border: 226 232 240;
+  --quiz-primary: 248 250 252;       /* #f8fafc */
+  --quiz-secondary: 255 255 255;     /* #ffffff */
+  --quiz-accent: 241 245 249;        /* #f1f5f9 */
+  --quiz-gold: 233 69 96;            /* #e94560 (same) */
+  --quiz-text: 15 23 42;             /* #0f172a */
+  --quiz-muted: 100 116 139;         /* #64748b */
+  --quiz-border: 226 232 240;        /* #e2e8f0 */
 }
 
+/* ============ BASE ============ */
 body {
   margin: 0;
   padding: 0;
   background-color: rgb(var(--quiz-primary));
   color: rgb(var(--quiz-text));
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
   transition: background-color 0.3s ease, color 0.3s ease;
+  overflow-x: hidden;
 }
 
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: rgb(var(--quiz-secondary)); }
-::-webkit-scrollbar-thumb { background: rgb(var(--quiz-gold)); border-radius: 4px; }
+/* ============ SCROLLBAR ============ */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
 
+::-webkit-scrollbar-track {
+  background: rgb(var(--quiz-secondary));
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--quiz-gold));
+  border-radius: 4px;
+  opacity: 0.7;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  opacity: 1;
+}
+
+/* ============ SMOOTH TRANSITIONS ============ */
 * {
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-duration: 200ms;
+  transition-timing-function: ease;
+}
+
+/* Prevent transition on specific elements that shouldn't animate */
+input, select, textarea {
+  transition-property: background-color, border-color, color;
+  transition-duration: 150ms;
+}
+
+/* ============ UTILITY CLASSES ============ */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ============ ANIMATIONS ============ */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.animate-slide-in {
+  animation: slideInRight 0.3s ease-out;
+}
+
+/* ============ FOCUS STATES ============ */
+input:focus,
+select:focus,
+textarea:focus,
+button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(var(--quiz-gold) / 0.3);
+}
+
+/* ============ SELECTION ============ */
+::selection {
+  background: rgb(var(--quiz-gold) / 0.3);
+  color: rgb(var(--quiz-text));
+}
+
+/* ============ RESPONSIVE OVERFLOW FIX ============ */
+@media (max-width: 1023px) {
+  body {
+    overflow-x: hidden;
+  }
+}
+
+/* ============ RESPONSIVE UTILITIES ============ */
+@media (max-width: 640px) {
+  /* Reduce font sizes globally on mobile */
+  html {
+    font-size: 14px;
+  }
+  
+  /* Prevent horizontal scroll */
+  body {
+    overflow-x: hidden;
+  }
+  
+  /* Make tables scrollable */
+  table {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 1023px) {
+  /* Prevent main content from overflowing */
+  main {
+    overflow-x: hidden;
+  }
+}
+
+/* ============ TOUCH FRIENDLY ============ */
+@media (hover: none) and (pointer: coarse) {
+  button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  input[type="checkbox"],
+  input[type="radio"] {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+/* ============ LANDSCAPE MOBILE ============ */
+@media (max-width: 900px) and (orientation: landscape) {
+  .min-h-screen {
+    min-height: 100vh;
+  }
+}
+
+/* ============ SAFE AREAS (iPhone notch) ============ */
+@supports (padding: env(safe-area-inset-left)) {
+  body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+/* ============ PRINT ============ */
+@media print {
+  aside,
+  nav,
+  button {
+    display: none !important;
+  }
+  
+  main {
+    margin-left: 0 !important;
+    padding-top: 0 !important;
+  }
 }
