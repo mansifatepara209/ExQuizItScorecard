@@ -1,8 +1,8 @@
 import React from 'react';
 import {
     Users, Layers, Upload, Play, Monitor, Settings,
-    Menu, X, ChevronLeft, ChevronRight,
-    Download, Power, RotateCcw
+    X, ChevronLeft, ChevronRight,
+    Download, Power, RotateCcw, Pause
 } from 'lucide-react';
 
 function Sidebar({
@@ -15,6 +15,8 @@ function Sidebar({
     eventState,
     onStartEvent,
     onStopEvent,
+    onPauseEvent,
+    onResumeEvent,
     onExportResults,
     onResetAll
 }) {
@@ -27,6 +29,11 @@ function Sidebar({
         { id: 'settings', label: 'Settings', icon: Settings }
     ];
 
+    // ⭐ Boolean-safe checks for MySQL tinyint values
+    const isStarted = Boolean(eventState?.is_started);
+    const isPaused = Boolean(eventState?.is_paused);
+    const isLive = isStarted && !isPaused;
+
     return (
         <>
             {/* Mobile overlay */}
@@ -37,28 +44,24 @@ function Sidebar({
                 />
             )}
 
-            {/* Sidebar */}
             <aside
                 className={`fixed top-0 left-0 h-screen bg-quiz-secondary border-r border-quiz-border z-50 flex flex-col transition-all duration-300 ${isCollapsed ? 'lg:w-20' : 'lg:w-64'
                     } w-72 ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
                     }`}
             >
-                {/* Header */}
+                {/* Header with single toggle */}
                 <div className={`flex items-center border-b border-quiz-border h-14 md:h-16 px-3 md:px-4 flex-shrink-0 ${isCollapsed ? 'lg:justify-center' : 'justify-between'
                     }`}>
                     <div className="flex items-center gap-2">
-                        {/* Logo */}
                         <div className="w-9 h-9 rounded-lg bg-quiz-gold flex items-center justify-center flex-shrink-0">
                             <span className="text-white font-black text-sm">EQ</span>
                         </div>
-                        {/* Title — hidden when collapsed (desktop only) */}
                         <h1 className={`text-lg md:text-xl font-bold text-quiz-gold whitespace-nowrap ${isCollapsed ? 'lg:hidden' : ''
                             }`}>
                             Ex-Quiz-It
                         </h1>
                     </div>
 
-                    {/* Mobile close */}
                     <button
                         onClick={onMobileClose}
                         className="lg:hidden p-2 text-quiz-muted hover:text-quiz-text transition"
@@ -67,27 +70,14 @@ function Sidebar({
                         <X size={20} />
                     </button>
 
-                    {/* Desktop collapse */}
                     <button
                         onClick={onToggleCollapse}
-                        className={`hidden lg:flex p-1.5 rounded-lg hover:bg-quiz-accent text-quiz-muted hover:text-quiz-text transition ${isCollapsed ? 'hidden' : ''
-                            }`}
-                        title="Collapse sidebar"
+                        className="hidden lg:flex p-1.5 rounded-lg hover:bg-quiz-accent text-quiz-muted hover:text-quiz-gold transition"
+                        title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                     >
-                        <ChevronLeft size={18} />
+                        {isCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
                     </button>
                 </div>
-
-                {/* Collapse toggle (when collapsed) */}
-                {isCollapsed && (
-                    <button
-                        onClick={onToggleCollapse}
-                        className="hidden lg:flex justify-center py-3 border-b border-quiz-border text-quiz-muted hover:text-quiz-gold transition"
-                        title="Expand sidebar"
-                    >
-                        <ChevronRight size={18} />
-                    </button>
-                )}
 
                 {/* Nav items */}
                 <nav className="flex-1 overflow-y-auto py-3 md:py-4">
@@ -119,20 +109,26 @@ function Sidebar({
 
                 {/* Bottom controls */}
                 <div className="border-t border-quiz-border p-2 md:p-3 space-y-1.5 md:space-y-2 flex-shrink-0">
-                    {/* LIVE badge */}
-                    {eventState?.is_started && (
-                        <div className={`flex items-center gap-2 px-3 py-2 bg-green-900/30 border border-green-700 rounded-lg ${isCollapsed ? 'lg:justify-center' : ''
-                            }`}>
-                            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse flex-shrink-0"></span>
-                            <span className={`text-xs font-bold text-green-400 uppercase tracking-wider ${isCollapsed ? 'lg:hidden' : ''
-                                }`}>
-                                LIVE
+                    {/* ⭐ LIVE badge — uses Boolean-safe check */}
+                    {isLive && (
+                        <div className="flex items-center justify-center px-3 py-2 bg-green-900/30 border border-green-700 rounded-lg">
+                            <span className="text-xs font-bold text-green-400 uppercase tracking-wider">
+                                ● LIVE
                             </span>
                         </div>
                     )}
 
-                    {/* Start / Stop */}
-                    {!eventState?.is_started ? (
+                    {/* ⭐ PAUSED badge — uses Boolean-safe check */}
+                    {isPaused && (
+                        <div className="flex items-center justify-center px-3 py-2 bg-yellow-900/30 border border-yellow-700 rounded-lg">
+                            <span className="text-xs font-bold text-yellow-400 uppercase tracking-wider">
+                                ⏸ PAUSED
+                            </span>
+                        </div>
+                    )}
+
+                    {/* Start Event — when not started */}
+                    {!isStarted ? (
                         <button
                             onClick={onStartEvent}
                             title={isCollapsed ? 'Start Event' : ''}
@@ -143,18 +139,44 @@ function Sidebar({
                             <span className={isCollapsed ? 'lg:hidden' : ''}>Start Event</span>
                         </button>
                     ) : (
-                        <button
-                            onClick={onStopEvent}
-                            title={isCollapsed ? 'Stop Event' : ''}
-                            className={`w-full flex items-center gap-2 px-3 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition font-semibold text-sm ${isCollapsed ? 'lg:justify-center' : ''
-                                }`}
-                        >
-                            <Power size={18} className="flex-shrink-0" />
-                            <span className={isCollapsed ? 'lg:hidden' : ''}>Stop Event</span>
-                        </button>
+                        <>
+                            {/* Pause / Resume */}
+                            {!isPaused ? (
+                                <button
+                                    onClick={onPauseEvent}
+                                    title={isCollapsed ? 'Pause Event' : ''}
+                                    className={`w-full flex items-center gap-2 px-3 py-2.5 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition font-semibold text-sm ${isCollapsed ? 'lg:justify-center' : ''
+                                        }`}
+                                >
+                                    <Pause size={18} className="flex-shrink-0" />
+                                    <span className={isCollapsed ? 'lg:hidden' : ''}>Pause</span>
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={onResumeEvent}
+                                    title={isCollapsed ? 'Resume Event' : ''}
+                                    className={`w-full flex items-center gap-2 px-3 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition font-semibold text-sm ${isCollapsed ? 'lg:justify-center' : ''
+                                        }`}
+                                >
+                                    <Play size={18} className="flex-shrink-0" />
+                                    <span className={isCollapsed ? 'lg:hidden' : ''}>Resume</span>
+                                </button>
+                            )}
+
+                            {/* Stop Event */}
+                            <button
+                                onClick={onStopEvent}
+                                title={isCollapsed ? 'Stop Event' : ''}
+                                className={`w-full flex items-center gap-2 px-3 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition font-semibold text-sm ${isCollapsed ? 'lg:justify-center' : ''
+                                    }`}
+                            >
+                                <Power size={18} className="flex-shrink-0" />
+                                <span className={isCollapsed ? 'lg:hidden' : ''}>Stop Event</span>
+                            </button>
+                        </>
                     )}
 
-                    {/* Export */}
+                    {/* Export Results */}
                     <button
                         onClick={onExportResults}
                         title={isCollapsed ? 'Export Results' : ''}

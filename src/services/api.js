@@ -11,19 +11,20 @@ api.interceptors.response.use(
     }
 );
 
-// ============ EVENT ============
 export const EventService = {
     getState: (id) => api.get(`/event/state/${id}`),
     update: (id, data) => api.put(`/event/${id}`, data),
     start: (id) => api.post(`/event/start/${id}`),
     stop: (id) => api.post(`/event/stop/${id}`),
-    reset: (id) => api.post(`/event/reset/${id}`),           // clears scores only
-    resetAll: (id) => api.post(`/event/reset-all/${id}`),    // clears EVERYTHING
+    pause: (id) => api.post(`/event/pause/${id}`),
+    resume: (id) => api.post(`/event/resume/${id}`),
+    reset: (id) => api.post(`/event/reset/${id}`),
+    resetAll: (id) => api.post(`/event/reset-all/${id}`),
     getConfig: (id) => api.get(`/event/config/${id}`),
-    updateConfig: (id, config) => api.put(`/event/config/${id}`, { config })
+    updateConfig: (id, config) => api.put(`/event/config/${id}`, { config }),
+    updateSettings: (id, data) => api.put(`/event/settings/${id}`, data)
 };
 
-// ============ TEAMS ============
 export const TeamService = {
     getAll: (eventId) => api.get(`/teams/${eventId}`),
     getWithMembers: (eventId) => api.get(`/teams/with-members/${eventId}`),
@@ -33,7 +34,6 @@ export const TeamService = {
     reorder: (teams) => api.post('/teams/reorder', { teams })
 };
 
-// ============ ROUNDS ============
 export const RoundService = {
     getAll: (eventId) => api.get(`/rounds/${eventId}`),
     create: (data) => api.post('/rounds', data),
@@ -41,27 +41,31 @@ export const RoundService = {
     delete: (id) => api.delete(`/rounds/${id}`)
 };
 
-// ============ SCORES ============
 export const ScoreService = {
     apply: (data) => api.post('/scores', data),
-    penalty: (data) => api.post('/scores/penalty', data),   // custom penalty with reason
+    penalty: (data) => api.post('/scores/penalty', data),
     undo: (teamId, roundId) => api.delete(`/scores/undo/${teamId}/${roundId}`),
     getHistory: (eventId) => api.get(`/scores/history/${eventId}`)
 };
 
-// ============ RANKINGS ============
 export const RankingService = {
     getRankings: (eventId) => api.get(`/rankings/${eventId}`)
 };
 
-// ============ SCORING CONTROL ============
 export const ScoringControlService = {
     getCurrentTeam: (eventId) => api.get(`/scoring/current-team/${eventId}`),
     nextQuestion: (eventId) => api.post(`/scoring/next-question/${eventId}`),
-    setRound: (eventId, roundId) => api.post(`/scoring/set-round/${eventId}/${roundId}`)
+    setRound: (eventId, roundId) => api.post(`/scoring/set-round/${eventId}/${roundId}`),
+    setBuzzerTeam: (eventId, teamId) => api.post(`/scoring/set-buzzer-team/${eventId}`, { teamId }),
+    // Splash + Round control
+    showRoundCompleted: (eventId) => api.post(`/scoring/show-round-completed/${eventId}`),
+    showEventCompleted: (eventId) => api.post(`/scoring/show-event-completed/${eventId}`),
+    showNextRound: (eventId) => api.post(`/scoring/show-next-round/${eventId}`), // ⭐ NEW
+    clearSplash: (eventId) => api.post(`/scoring/clear-splash/${eventId}`),
+    nextRound: (eventId) => api.post(`/scoring/next-round/${eventId}`),
+    getSplash: (eventId) => api.get(`/event/splash/${eventId}`)
 };
 
-// ============ IMPORT / EXPORT ============
 export const ImportService = {
     preview: (eventId, data) => api.post(`/import/preview/${eventId}`, data, {
         headers: { 'Content-Type': 'multipart/form-data' }
@@ -73,18 +77,11 @@ export const ImportService = {
     exportResults: (eventId) => api.get(`/import/export-results/${eventId}`, { responseType: 'blob' })
 };
 
-// ============ HEALTH ============
 export const HealthService = {
     check: () => api.get('/health')
 };
 
 export default {
-    EventService,
-    TeamService,
-    RoundService,
-    ScoreService,
-    RankingService,
-    ScoringControlService,
-    ImportService,
-    HealthService
+    EventService, TeamService, RoundService, ScoreService,
+    RankingService, ScoringControlService, ImportService, HealthService
 };

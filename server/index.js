@@ -15,6 +15,7 @@ const pool = mysql.createPool({
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'ex_quiz_it',
+    charset: 'utf8mb4',
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0
@@ -30,45 +31,64 @@ app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
-// ==================== HELPERS ====================
+// ============ HELPERS ============
+const parseNum = (val, fallback) => {
+    if (val === undefined || val === null || val === '') return fallback;
+    const n = parseInt(val);
+    return isNaN(n) ? fallback : n;
+};
+
+// ==================== RANKING ====================
 async function recalcRanks(eventId) {
+    const [eventRow] = await pool.query('SELECT tie_break_rule FROM events WHERE id = ?', [eventId]);
+    const tieBreakRule = (eventRow[0]?.tie_break_rule || 'SCORE,CORRECT_COUNT,FEWER_WRONG,FEWER_PENALTIES,ALPHABETICAL')
+        .split(',').map(s => s.trim().toUpperCase());
+
     const [rows] = await pool.query(
         `SELECT t.id, t.team_order, t.name, t.short_name, t.institution,
             COALESCE(SUM(s.points), 0) as total_score,
             SUM(CASE WHEN s.action = 'correct' THEN 1 ELSE 0 END) as correct_count,
             SUM(CASE WHEN s.action = 'wrong' THEN 1 ELSE 0 END) as wrong_count,
             SUM(CASE WHEN s.action = 'half_correct' THEN 1 ELSE 0 END) as half_count,
+            SUM(CASE WHEN s.action = 'pass' THEN 1 ELSE 0 END) as pass_count,
             SUM(CASE WHEN s.action = 'penalty' THEN 1 ELSE 0 END) as penalty_count,
             COUNT(s.id) as total_answers
          FROM teams t
          LEFT JOIN scores s ON t.id = s.team_id
          WHERE t.event_id = ?
-         GROUP BY t.id
-         ORDER BY total_score DESC, correct_count DESC, wrong_count ASC, t.team_order ASC`,
+         GROUP BY t.id`,
         [eventId]
     );
 
-    let prevScore = null, prevCorrect = null, prevWrong = null;
-    let currentRank = 0;
-    return rows.map((r, i) => {
-        const score = Number(r.total_score);
-        const correct = Number(r.correct_count);
-        const wrong = Number(r.wrong_count);
-        if (prevScore !== score || prevCorrect !== correct || prevWrong !== wrong) {
-            currentRank = i + 1;
-            prevScore = score; prevCorrect = correct; prevWrong = wrong;
+    const normalized = rows.map(r => ({
+        ...r,
+        total_score: Number(r.total_score),
+        correct_count: Number(r.correct_count),
+        wrong_count: Number(r.wrong_count),
+        half_count: Number(r.half_count),
+        pass_count: Number(r.pass_count),
+        penalty_count: Number(r.penalty_count),
+        total_answers: Number(r.total_answers)
+    }));
+
+    normalized.sort((a, b) => {
+        for (const rule of tieBreakRule) {
+            let diff = 0;
+            switch (rule) {
+                case 'SCORE': diff = b.total_score - a.total_score; break;
+                case 'CORRECT_COUNT': diff = b.correct_count - a.correct_count; break;
+                case 'FEWER_WRONG': diff = a.wrong_count - b.wrong_count; break;
+                case 'FEWER_PENALTIES': diff = a.penalty_count - b.penalty_count; break;
+                case 'FEWER_PASS': diff = a.pass_count - b.pass_count; break;
+                case 'ALPHABETICAL': diff = a.name.localeCompare(b.name); break;
+                case 'TEAM_ORDER': diff = a.team_order - b.team_order; break;
+            }
+            if (diff !== 0) return diff;
         }
-        return {
-            ...r,
-            total_score: score,
-            correct_count: correct,
-            wrong_count: wrong,
-            half_count: Number(r.half_count),
-            penalty_count: Number(r.penalty_count),
-            total_answers: Number(r.total_answers),
-            rank: currentRank
-        };
+        return 0;
     });
+
+    return normalized.map((r, i) => ({ ...r, rank: i + 1 }));
 }
 
 // ==================== HEALTH ====================
@@ -106,7 +126,6 @@ app.post('/api/event/start/:eventId', async (req, res) => {
     const conn = await pool.getConnection();
     try {
         await conn.beginTransaction();
-
         const [teams] = await conn.query('SELECT COUNT(*) as c FROM teams WHERE event_id = ?', [req.params.eventId]);
         if (teams[0].c === 0) { await conn.rollback(); return res.status(400).json({ error: 'No teams found' }); }
 
@@ -114,22 +133,36 @@ app.post('/api/event/start/:eventId', async (req, res) => {
         if (rounds.length === 0) { await conn.rollback(); return res.status(400).json({ error: 'No rounds found' }); }
 
         await conn.query(
-            `UPDATE events SET is_started = TRUE, current_round_id = ?, current_question_index = 0, regular_round_sequence_index = 0
+            `UPDATE events SET is_started = TRUE, is_paused = FALSE, current_round_id = ?, current_question_index = 0, regular_round_sequence_index = 0, current_buzzer_team_id = NULL
              WHERE id = ?`,
             [rounds[0].id, req.params.eventId]
         );
-
         await conn.commit();
         res.json({ success: true, currentRoundId: rounds[0].id });
-    } catch (e) {
-        await conn.rollback();
-        res.status(500).json({ error: e.message });
-    } finally { conn.release(); }
+    } catch (e) { await conn.rollback(); res.status(500).json({ error: e.message }); }
+    finally { conn.release(); }
 });
 
 app.post('/api/event/stop/:eventId', async (req, res) => {
     try {
-        await pool.query('UPDATE events SET is_started = FALSE WHERE id = ?', [req.params.eventId]);
+        await pool.query(
+            `UPDATE events SET is_started = FALSE, is_paused = FALSE, show_splash = NULL WHERE id = ?`,
+            [req.params.eventId]
+        );
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/event/pause/:eventId', async (req, res) => {
+    try {
+        await pool.query('UPDATE events SET is_paused = TRUE WHERE id = ?', [req.params.eventId]);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/event/resume/:eventId', async (req, res) => {
+    try {
+        await pool.query('UPDATE events SET is_paused = FALSE WHERE id = ?', [req.params.eventId]);
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -139,17 +172,16 @@ app.post('/api/event/reset/:eventId', async (req, res) => {
     try {
         await conn.beginTransaction();
         await conn.query('DELETE FROM scores WHERE event_id = ?', [req.params.eventId]);
+        await conn.query('DELETE FROM rank_history WHERE event_id = ?', [req.params.eventId]);
         await conn.query(
-            `UPDATE events SET is_started = FALSE, current_round_id = NULL, current_question_index = 0, regular_round_sequence_index = 0
+            `UPDATE events SET is_started = FALSE, is_paused = FALSE, current_round_id = NULL, current_question_index = 0, regular_round_sequence_index = 0, current_buzzer_team_id = NULL
              WHERE id = ?`,
             [req.params.eventId]
         );
         await conn.commit();
         res.json({ success: true });
-    } catch (e) {
-        await conn.rollback();
-        res.status(500).json({ error: e.message });
-    } finally { conn.release(); }
+    } catch (e) { await conn.rollback(); res.status(500).json({ error: e.message }); }
+    finally { conn.release(); }
 });
 
 app.post('/api/event/reset-all/:eventId', async (req, res) => {
@@ -163,16 +195,14 @@ app.post('/api/event/reset-all/:eventId', async (req, res) => {
         await conn.query('DELETE FROM rounds WHERE event_id = ?', [req.params.eventId]);
         await conn.query('DELETE FROM audit_log WHERE event_id = ?', [req.params.eventId]);
         await conn.query(
-            `UPDATE events SET is_started = FALSE, current_round_id = NULL, current_question_index = 0, regular_round_sequence_index = 0
+            `UPDATE events SET is_started = FALSE, is_paused = FALSE, current_round_id = NULL, current_question_index = 0, regular_round_sequence_index = 0, current_buzzer_team_id = NULL
              WHERE id = ?`,
             [req.params.eventId]
         );
         await conn.commit();
         res.json({ success: true });
-    } catch (e) {
-        await conn.rollback();
-        res.status(500).json({ error: e.message });
-    } finally { conn.release(); }
+    } catch (e) { await conn.rollback(); res.status(500).json({ error: e.message }); }
+    finally { conn.release(); }
 });
 
 app.get('/api/event/config/:eventId', async (req, res) => {
@@ -182,23 +212,19 @@ app.get('/api/event/config/:eventId', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.put('/api/event/config/:eventId', async (req, res) => {
-    const { config } = req.body;
-    const conn = await pool.getConnection();
+app.put('/api/event/settings/:eventId', async (req, res) => {
+    const { tieBreakRule, penaltyPoints } = req.body;
     try {
-        await conn.beginTransaction();
-        for (const [action, points] of Object.entries(config)) {
-            await conn.query(
-                `INSERT INTO scoring_config (event_id, action, points) VALUES (?, ?, ?)
-                 ON DUPLICATE KEY UPDATE points = VALUES(points)`,
-                [req.params.eventId, action, points]);
+        if (tieBreakRule !== undefined) {
+            await pool.query('UPDATE events SET tie_break_rule = ? WHERE id = ?',
+                [tieBreakRule, req.params.eventId]);
         }
-        await conn.commit();
+        if (penaltyPoints !== undefined) {
+            await pool.query('UPDATE events SET penalty_points = ? WHERE id = ?',
+                [penaltyPoints, req.params.eventId]);
+        }
         res.json({ success: true });
-    } catch (e) {
-        await conn.rollback();
-        res.status(500).json({ error: e.message });
-    } finally { conn.release(); }
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ==================== TEAMS ====================
@@ -297,29 +323,29 @@ app.get('/api/rounds/:eventId', async (req, res) => {
 });
 
 app.post('/api/rounds', async (req, res) => {
-    const { eventId, name, questionCount, type, difficulty, correctPoints, wrongPoints, halfPoints, passPoints } = req.body;
+    const { eventId, name, questionCount, type, difficulty, correctPoints, wrongPoints, halfPoints, passPoints, questionType } = req.body;
     try {
         const [maxOrder] = await pool.query('SELECT COALESCE(MAX(round_order), 0) + 1 as n FROM rounds WHERE event_id = ?', [eventId]);
         const [result] = await pool.query(
             `INSERT INTO rounds (event_id, round_order, name, question_count, type, difficulty, 
-                correct_points, wrong_points, half_points, pass_points)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [eventId, maxOrder[0].n, name, questionCount || 0, type, difficulty,
-             correctPoints ?? 10, wrongPoints ?? -5, halfPoints ?? 5, passPoints ?? 0]);
+                correct_points, wrong_points, half_points, pass_points, question_type)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [eventId, maxOrder[0].n, name, questionCount || 9, type, difficulty,
+             correctPoints ?? 0, wrongPoints ?? 0, halfPoints ?? 0, passPoints ?? 0, questionType || null]);
         const [newRound] = await pool.query('SELECT * FROM rounds WHERE id = ?', [result.insertId]);
         res.status(201).json(newRound[0]);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.put('/api/rounds/:id', async (req, res) => {
-    const { name, questionCount, type, difficulty, correctPoints, wrongPoints, halfPoints, passPoints } = req.body;
+    const { name, questionCount, type, difficulty, correctPoints, wrongPoints, halfPoints, passPoints, questionType } = req.body;
     try {
         await pool.query(
             `UPDATE rounds SET name = ?, question_count = ?, type = ?, difficulty = ?,
-                correct_points = ?, wrong_points = ?, half_points = ?, pass_points = ?
+                correct_points = ?, wrong_points = ?, half_points = ?, pass_points = ?, question_type = ?
              WHERE id = ?`,
             [name, questionCount, type, difficulty,
-             correctPoints ?? 10, wrongPoints ?? -5, halfPoints ?? 5, passPoints ?? 0, req.params.id]);
+             correctPoints ?? 0, wrongPoints ?? 0, halfPoints ?? 0, passPoints ?? 0, questionType || null, req.params.id]);
         const [updated] = await pool.query('SELECT * FROM rounds WHERE id = ?', [req.params.id]);
         res.json(updated[0]);
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -337,16 +363,22 @@ app.post('/api/scores', async (req, res) => {
     try {
         await conn.beginTransaction();
 
+        const [eventRow] = await conn.query('SELECT is_paused, penalty_points FROM events WHERE id = ?', [eventId]);
+        if (eventRow[0]?.is_paused) {
+            await conn.rollback();
+            return res.status(400).json({ error: 'Event is paused. Resume to score.' });
+        }
+
         const [roundRow] = await conn.query('SELECT * FROM rounds WHERE id = ?', [roundId]);
         if (roundRow.length === 0) { await conn.rollback(); return res.status(400).json({ error: 'Round not found' }); }
         const round = roundRow[0];
 
         let points = 0;
-        if (action === 'correct') points = Number(round.correct_points ?? 10);
-        else if (action === 'wrong') points = Number(round.wrong_points ?? -5);
-        else if (action === 'half_correct') points = Number(round.half_points ?? 5);
+        if (action === 'correct') points = Number(round.correct_points ?? 0);
+        else if (action === 'wrong') points = Number(round.wrong_points ?? 0);
+        else if (action === 'half_correct') points = Number(round.half_points ?? 0);
         else if (action === 'pass') points = Number(round.pass_points ?? 0);
-        else if (action === 'penalty') points = -10;
+        else if (action === 'penalty') points = Number(eventRow[0]?.penalty_points ?? -10);
 
         const [scoreResult] = await conn.query(
             'SELECT COALESCE(SUM(points), 0) as total FROM scores WHERE team_id = ?', [teamId]);
@@ -368,7 +400,6 @@ app.post('/api/scores', async (req, res) => {
     finally { conn.release(); }
 });
 
-// Custom penalty with reason
 app.post('/api/scores/penalty', async (req, res) => {
     const { eventId, teamId, roundId, questionIndex, points, reason } = req.body;
     const conn = await pool.getConnection();
@@ -401,8 +432,14 @@ app.delete('/api/scores/undo/:teamId/:roundId', async (req, res) => {
         const [last] = await conn.query(
             `SELECT * FROM scores WHERE team_id = ? AND round_id = ? ORDER BY id DESC LIMIT 1`,
             [req.params.teamId, req.params.roundId]);
-        if (last.length === 0) return res.status(404).json({ error: 'No score to undo' });
+        if (last.length === 0) {
+            await conn.rollback();
+            return res.status(404).json({ error: 'No score to undo' });
+        }
         await conn.query('DELETE FROM scores WHERE id = ?', [last[0].id]);
+        await conn.query(
+            `INSERT INTO audit_log (event_id, action, details) VALUES (?, 'undo', ?)`,
+            [last[0].event_id, JSON.stringify({ restoredScore: last[0].before_score, teamId: req.params.teamId })]);
         await conn.commit();
         res.json({ success: true, restoredScore: last[0].before_score });
     } catch (e) { await conn.rollback(); res.status(500).json({ error: e.message }); }
@@ -429,7 +466,6 @@ app.get('/api/rankings/:eventId', async (req, res) => {
 });
 
 // ==================== SCORING CONTROL ====================
-// Get current team (auto-rotate)
 app.get('/api/scoring/current-team/:eventId', async (req, res) => {
     try {
         const [event] = await pool.query('SELECT * FROM events WHERE id = ?', [req.params.eventId]);
@@ -438,28 +474,154 @@ app.get('/api/scoring/current-team/:eventId', async (req, res) => {
 
         const [teams] = await pool.query('SELECT * FROM teams WHERE event_id = ? ORDER BY team_order', [req.params.eventId]);
         if (!e.current_round_id || teams.length === 0) {
-            return res.json({ team: null, round: null, questionIndex: 0, regularRoundIndex: 0, teamsTotal: 0 });
+            return res.json({ team: null, round: null, questionIndex: 0, regularRoundIndex: 0, teamsTotal: 0, isPaused: e.is_paused || false });
         }
 
         const [roundRow] = await pool.query('SELECT * FROM rounds WHERE id = ?', [e.current_round_id]);
         const round = roundRow[0];
 
-        let teamIndex = 0;
+        let currentTeam = null;
         if (round.type === 'regular') {
-            teamIndex = e.regular_round_sequence_index % teams.length;
+            const teamIndex = e.regular_round_sequence_index % teams.length;
+            currentTeam = teams[teamIndex] || null;
+        } else if (round.type === 'buzzer') {
+            if (e.current_buzzer_team_id) {
+                currentTeam = teams.find(t => t.id === e.current_buzzer_team_id) || null;
+            }
         }
 
+        const [existingScore] = await pool.query(
+            `SELECT id FROM scores WHERE team_id = ? AND round_id = ? AND question_index = ? LIMIT 1`,
+            [currentTeam?.id || 0, e.current_round_id, e.current_question_index]);
+
         res.json({
-            team: teams[teamIndex] || null,
+            team: currentTeam,
             round,
             questionIndex: e.current_question_index,
             regularRoundIndex: e.regular_round_sequence_index,
-            teamsTotal: teams.length
+            teamsTotal: teams.length,
+            isPaused: e.is_paused || false,
+            hasScoredThisQuestion: existingScore.length > 0
         });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Advance to next question (and rotate team if regular)
+app.post('/api/scoring/set-buzzer-team/:eventId', async (req, res) => {
+    const { teamId } = req.body;
+    try {
+        await pool.query(
+            `UPDATE events SET current_buzzer_team_id = ? WHERE id = ?`,
+            [teamId, req.params.eventId]);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ============ SPLASH CONTROL ============
+// Show "Round Completed" splash in audience
+app.post('/api/scoring/show-round-completed/:eventId', async (req, res) => {
+    try {
+        const [eventRow] = await pool.query('SELECT current_round_id FROM events WHERE id = ?', [req.params.eventId]);
+        await pool.query(
+            `UPDATE events SET show_splash = 'round_completed', splash_round_id = ? WHERE id = ?`,
+            [eventRow[0]?.current_round_id, req.params.eventId]
+        );
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Get splash state (used by audience)
+app.get('/api/event/splash/:eventId', async (req, res) => {
+    try {
+        const [event] = await pool.query(
+            `SELECT e.show_splash, e.splash_round_id, e.is_started, e.is_paused,
+                r.name as splash_round_name, r.round_order as splash_round_order
+             FROM events e
+             LEFT JOIN rounds r ON e.splash_round_id = r.id
+             WHERE e.id = ?`,
+            [req.params.eventId]
+        );
+
+        const row = event[0];
+
+        // ⭐ If event isn't started, don't return any splash
+        if (!row || !row.is_started) {
+            return res.json({ show_splash: null, splash_round_id: null });
+        }
+
+        res.json(row);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Show "Event Complete" splash
+app.post('/api/scoring/show-event-completed/:eventId', async (req, res) => {
+    try {
+        await pool.query(
+            `UPDATE events SET show_splash = 'event_completed', splash_round_id = NULL WHERE id = ?`,
+            [req.params.eventId]
+        );
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Clear splash (called by audience after auto-hide, or by operator)
+app.post('/api/scoring/clear-splash/:eventId', async (req, res) => {
+    try {
+        await pool.query(
+            `UPDATE events SET show_splash = NULL WHERE id = ?`,
+            [req.params.eventId]
+        );
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Move to next round (called from popup)
+app.post('/api/scoring/next-round/:eventId', async (req, res) => {
+    const conn = await pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        const [eventRow] = await conn.query('SELECT * FROM events WHERE id = ?', [req.params.eventId]);
+        const e = eventRow[0];
+
+        const [currentRoundRow] = await conn.query('SELECT * FROM rounds WHERE id = ?', [e.current_round_id]);
+        const currentRound = currentRoundRow[0];
+
+        const [nextRounds] = await conn.query(
+            'SELECT * FROM rounds WHERE event_id = ? AND round_order > ? ORDER BY round_order LIMIT 1',
+            [req.params.eventId, currentRound.round_order]
+        );
+
+        if (nextRounds.length === 0) {
+            await conn.rollback();
+            return res.status(400).json({ error: 'No more rounds' });
+        }
+
+        const nextRound = nextRounds[0];
+
+        // Advance regular round sequence if current round was regular
+        let newRegular = e.regular_round_sequence_index;
+        if (currentRound.type === 'regular') {
+            newRegular = e.regular_round_sequence_index + 1;
+        }
+
+        await conn.query(
+            `UPDATE events SET 
+                current_round_id = ?, 
+                current_question_index = 0, 
+                regular_round_sequence_index = ?, 
+                current_buzzer_team_id = NULL,
+                show_splash = 'round_started',
+                splash_round_id = ?
+             WHERE id = ?`,
+            [nextRound.id, newRegular, nextRound.id, req.params.eventId]
+        );
+
+        await conn.commit();
+        res.json({ success: true, nextRoundId: nextRound.id, nextRoundName: nextRound.name, nextRoundOrder: nextRound.round_order });
+    } catch (e) { await conn.rollback(); res.status(500).json({ error: e.message }); }
+    finally { conn.release(); }
+});
+
+// ============ NEXT QUESTION — Enforces score gate for ALL rounds ============
+// ============ NEXT QUESTION — Enforces score gate + signals round completion ============
 app.post('/api/scoring/next-question/:eventId', async (req, res) => {
     const conn = await pool.getConnection();
     try {
@@ -470,51 +632,93 @@ app.post('/api/scoring/next-question/:eventId', async (req, res) => {
         const [roundRow] = await conn.query('SELECT * FROM rounds WHERE id = ?', [e.current_round_id]);
         const round = roundRow[0];
 
-        let newQ = e.current_question_index + 1;
-        let newRegular = e.regular_round_sequence_index;
-        let newRoundId = e.current_round_id;
-        let isNewRound = false;
+        const [teams] = await conn.query('SELECT * FROM teams WHERE event_id = ? ORDER BY team_order', [req.params.eventId]);
+        let currentTeamId = null;
 
+        if (round.type === 'regular') {
+            currentTeamId = teams[e.regular_round_sequence_index % teams.length]?.id;
+        } else if (round.type === 'buzzer') {
+            currentTeamId = e.current_buzzer_team_id;
+        }
+
+        // ⭐ SCORING GATE: Applies to ALL rounds (regular + buzzer)
+        const [existingScore] = await conn.query(
+            `SELECT id FROM scores WHERE team_id = ? AND round_id = ? AND question_index = ? LIMIT 1`,
+            [currentTeamId, e.current_round_id, e.current_question_index]);
+
+        if (existingScore.length === 0) {
+            await conn.rollback();
+            return res.status(400).json({
+                error: 'Assign a score first before moving to next question',
+                needsScore: true
+            });
+        }
+
+        let newQ = e.current_question_index + 1;
+
+        // ⭐ If last question of this round → DON'T auto-advance. Signal round completion.
         if (newQ >= round.question_count) {
             const [nextRounds] = await conn.query(
                 'SELECT * FROM rounds WHERE event_id = ? AND round_order > ? ORDER BY round_order LIMIT 1',
                 [req.params.eventId, round.round_order]);
-            if (nextRounds.length > 0) {
-                newRoundId = nextRounds[0].id;
-                newQ = 0;
-                isNewRound = true;
-            } else {
-                await conn.commit();
-                return res.json({ success: true, finished: true, currentQuestionIndex: newQ });
+
+            // Just increment question index (so UI knows it's now past last)
+            await conn.query(
+                `UPDATE events SET current_question_index = ? WHERE id = ?`,
+                [newQ, req.params.eventId]
+            );
+            await conn.commit();
+
+            if (nextRounds.length === 0) {
+                return res.json({
+                    success: true,
+                    finished: true,
+                    roundCompleted: true,
+                    currentQuestionIndex: newQ,
+                    hasNextRound: false,
+                    currentRoundId: round.id,
+                    currentRoundName: round.name,
+                    currentRoundOrder: round.round_order
+                });
             }
+
+            return res.json({
+                success: true,
+                roundCompleted: true,
+                currentQuestionIndex: newQ,
+                hasNextRound: true,
+                currentRoundId: round.id,
+                currentRoundName: round.name,
+                currentRoundOrder: round.round_order
+            });
         }
 
+        // Normal next question (not last)
+        let newRegular = e.regular_round_sequence_index;
         if (round.type === 'regular') {
             newRegular = e.regular_round_sequence_index + 1;
         }
 
         await conn.query(
-            `UPDATE events SET current_question_index = ?, regular_round_sequence_index = ?, current_round_id = ?
-             WHERE id = ?`,
-            [newQ, newRegular, newRoundId, req.params.eventId]);
+            `UPDATE events SET current_question_index = ?, regular_round_sequence_index = ?, current_buzzer_team_id = NULL WHERE id = ?`,
+            [newQ, newRegular, req.params.eventId]);
 
         await conn.commit();
         res.json({
             success: true,
             currentQuestionIndex: newQ,
             regularRoundIndex: newRegular,
-            currentRoundId: newRoundId,
-            isNewRound
+            currentRoundId: e.current_round_id,
+            isNewRound: false
         });
     } catch (e) { await conn.rollback(); res.status(500).json({ error: e.message }); }
     finally { conn.release(); }
 });
 
-// Set round manually (for buzzer)
 app.post('/api/scoring/set-round/:eventId/:roundId', async (req, res) => {
     try {
         await pool.query(
-            `UPDATE events SET current_round_id = ?, current_question_index = 0 WHERE id = ?`,
+            `UPDATE events SET current_round_id = ?, current_question_index = 0, current_buzzer_team_id = NULL WHERE id = ?`,
             [req.params.roundId, req.params.eventId]);
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -526,21 +730,19 @@ app.get('/api/import/template', (req, res) => {
 
     const teamsData = [
         ['Team Order', 'Team Name', 'Short Name', 'Institution', 'Members'],
-        [1, 'Team Alpha', 'ALP', 'Sample University', 'Alice; Bob; Carol'],
-        [2, 'Team Beta', 'BET', 'Sample College', 'Dave; Eve; Carl']
+        [1, 'A', '1', 'A1 University', 'A1;A2;A3']
     ];
     xlsx.utils.book_append_sheet(wb, xlsx.utils.aoa_to_sheet(teamsData), 'Teams');
 
     const roundsData = [
-        ['Round Order', 'Round Name', 'Type', 'Difficulty', 'Questions', 'Correct Points', 'Wrong Points', 'Half Points', 'Pass Points'],
-        [1, 'General Knowledge', 'REGULAR', 'EASY', 10, 10, -5, 5, 0],
-        [2, 'Rapid Fire', 'BUZZER', 'MODERATE', 15, 10, -5, 5, 0]
+        ['Type', 'Round No.', 'Round Name', 'Type', 'Level', 'Positive', 'Negative', 'Half', 'Pass'],
+        ['R', 1, 'One Line. One Brand.', 'DIRECT', 'EASY', 10, 0, 5, 0]
     ];
     xlsx.utils.book_append_sheet(wb, xlsx.utils.aoa_to_sheet(roundsData), 'Rounds');
 
     const settingsData = [
         ['Penalty Points', 'Tie Break Rule', 'Event Name'],
-        [-10, 'SCORE,CORRECT_COUNT,ALPHABETICAL', 'Ex-Quiz-It 2026']
+        [-10, 'SCORE,CORRECT_COUNT,FEWER_WRONG,FEWER_PENALTIES,ALPHABETICAL', 'Ex-Quiz-It 2026']
     ];
     xlsx.utils.book_append_sheet(wb, xlsx.utils.aoa_to_sheet(settingsData), 'Settings');
 
@@ -550,12 +752,10 @@ app.get('/api/import/template', (req, res) => {
     res.send(buffer);
 });
 
-// Preview import
 app.post('/api/import/preview/:eventId', upload.single('file'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
         const wb = xlsx.read(req.file.buffer, { type: 'buffer' });
-
         const preview = { teams: [], rounds: [], settings: {}, sheetsFound: wb.SheetNames };
 
         if (wb.Sheets['Teams']) {
@@ -571,24 +771,56 @@ app.post('/api/import/preview/:eventId', upload.single('file'), async (req, res)
 
         if (wb.Sheets['Rounds']) {
             const data = xlsx.utils.sheet_to_json(wb.Sheets['Rounds']);
-            preview.rounds = data.map(row => ({
-                roundOrder: row['Round Order'] || '',
-                roundName: row['Round Name'] || row['RoundName'] || '',
-                type: (row.Type || 'REGULAR').toString().toUpperCase() === 'BUZZER' ? 'buzzer' : 'regular',
-                difficulty: (row.Difficulty || 'easy').toString().toLowerCase(),
-                questions: parseInt(row.Questions) || 0,
-                correctPoints: parseInt(row['Correct Points']) || 10,
-                wrongPoints: parseInt(row['Wrong Points']) ?? -5,
-                halfPoints: parseInt(row['Half Points']) || 5,
-                passPoints: parseInt(row['Pass Points']) || 0
-            })).filter(r => r.roundName);
+
+            if (data.length > 0) {
+                console.log('📋 Rounds columns found:', Object.keys(data[0]));
+            }
+
+            preview.rounds = data.map(row => {
+                const isNewFormat =
+                    row['Positive'] !== undefined ||
+                    row['Negative'] !== undefined ||
+                    row['Level'] !== undefined ||
+                    row['Round No.'] !== undefined;
+
+                if (isNewFormat) {
+                    const roundTypeRaw = (row['Type'] || '').toString().toUpperCase();
+                    const secondType = row['Type_1'] || row['_1'] || row['Format'] || null;
+
+                    return {
+                        roundOrder: parseNum(row['Round No.'], 0),
+                        roundName: row['Round Name'] || '',
+                        type: roundTypeRaw === 'BUZZER' ? 'buzzer' : 'regular',
+                        questionType: secondType,
+                        difficulty: (row['Level'] || 'easy').toString().toLowerCase(),
+                        questions: 9,
+                        correctPoints: parseNum(row['Positive'], 0),
+                        wrongPoints: parseNum(row['Negative'], 0),
+                        halfPoints: parseNum(row['Half'], 0),
+                        passPoints: parseNum(row['Pass'], 0)
+                    };
+                } else {
+                    return {
+                        roundOrder: parseNum(row['Round Order'], 0),
+                        roundName: row['Round Name'] || row['RoundName'] || '',
+                        type: (row.Type || 'REGULAR').toString().toUpperCase() === 'BUZZER' ? 'buzzer' : 'regular',
+                        questionType: null,
+                        difficulty: (row.Difficulty || 'easy').toString().toLowerCase(),
+                        questions: parseNum(row.Questions, 9),
+                        correctPoints: parseNum(row['Correct Points'], 0),
+                        wrongPoints: parseNum(row['Wrong Points'], 0),
+                        halfPoints: parseNum(row['Half Points'], 0),
+                        passPoints: parseNum(row['Pass Points'], 0)
+                    };
+                }
+            }).filter(r => r.roundName);
         }
 
         if (wb.Sheets['Settings']) {
             const data = xlsx.utils.sheet_to_json(wb.Sheets['Settings']);
             if (data[0]) {
                 preview.settings = {
-                    penaltyPoints: parseInt(data[0]['Penalty Points']) ?? -10,
+                    penaltyPoints: parseNum(data[0]['Penalty Points'], -10),
                     eventName: data[0]['Event Name'] || '',
                     tieBreakRule: data[0]['Tie Break Rule'] || ''
                 };
@@ -599,7 +831,6 @@ app.post('/api/import/preview/:eventId', upload.single('file'), async (req, res)
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Full import — REPLACES ALL DATA
 app.post('/api/import/full/:eventId', upload.single('file'), async (req, res) => {
     console.log('\n========== IMPORT (REPLACE MODE) ==========');
     try {
@@ -619,13 +850,12 @@ app.post('/api/import/full/:eventId', upload.single('file'), async (req, res) =>
             await conn.query('DELETE FROM teams WHERE event_id = ?', [req.params.eventId]);
             await conn.query('DELETE FROM rounds WHERE event_id = ?', [req.params.eventId]);
             await conn.query(
-                'UPDATE events SET current_round_id = NULL, current_question_index = 0, regular_round_sequence_index = 0, is_started = FALSE WHERE id = ?',
+                'UPDATE events SET current_round_id = NULL, current_question_index = 0, regular_round_sequence_index = 0, is_started = FALSE, is_paused = FALSE, current_buzzer_team_id = NULL WHERE id = ?',
                 [req.params.eventId]);
 
             await conn.query('ALTER TABLE teams AUTO_INCREMENT = 1');
             await conn.query('ALTER TABLE rounds AUTO_INCREMENT = 1');
 
-            // TEAMS
             if (wb.Sheets['Teams']) {
                 const teamsData = xlsx.utils.sheet_to_json(wb.Sheets['Teams']);
                 let order = 0;
@@ -654,44 +884,94 @@ app.post('/api/import/full/:eventId', upload.single('file'), async (req, res) =>
                 }
             }
 
-            // ROUNDS
             if (wb.Sheets['Rounds']) {
                 const roundsData = xlsx.utils.sheet_to_json(wb.Sheets['Rounds']);
                 let order = 0;
+
+                if (roundsData.length > 0) {
+                    console.log('📋 Rounds columns found:', Object.keys(roundsData[0]));
+                }
+
                 for (const row of roundsData) {
                     const roundName = (row['Round Name'] || row['RoundName'] || '').toString().trim();
                     if (!roundName) continue;
 
-                    const typeRaw = (row.Type || 'REGULAR').toString().toUpperCase();
-                    const type = typeRaw === 'BUZZER' ? 'buzzer' : 'regular';
-                    const diffRaw = (row.Difficulty || 'easy').toString().toLowerCase();
-                    const difficulty = ['easy', 'moderate', 'hard'].includes(diffRaw) ? diffRaw : 'easy';
+                    const isNewFormat =
+                        row['Positive'] !== undefined ||
+                        row['Negative'] !== undefined ||
+                        row['Level'] !== undefined ||
+                        row['Round No.'] !== undefined;
+
+                    let roundType, difficulty, questions, correctPoints, wrongPoints, halfPoints, passPoints, questionType, roundOrder;
+
+                    if (isNewFormat) {
+                        const typeRaw = (row['Type'] || '').toString().toUpperCase();
+                        roundType = typeRaw === 'BUZZER' ? 'buzzer' : 'regular';
+                        questionType = row['Type_1'] || row['_1'] || row['Format'] || null;
+
+                        const levelRaw = (row['Level'] || 'easy').toString().toLowerCase();
+                        difficulty = ['easy', 'moderate', 'hard'].includes(levelRaw) ? levelRaw : 'easy';
+
+                        questions = 9;
+                        correctPoints = parseNum(row['Positive'], 0);
+                        wrongPoints = parseNum(row['Negative'], 0);
+                        halfPoints = parseNum(row['Half'], 0);
+                        passPoints = parseNum(row['Pass'], 0);
+                        roundOrder = parseNum(row['Round No.'], order + 1);
+                    } else {
+                        roundType = (row.Type || 'REGULAR').toString().toUpperCase() === 'BUZZER' ? 'buzzer' : 'regular';
+                        questionType = null;
+                        const diffRaw = (row.Difficulty || 'easy').toString().toLowerCase();
+                        difficulty = ['easy', 'moderate', 'hard'].includes(diffRaw) ? diffRaw : 'easy';
+                        questions = parseNum(row.Questions, 9);
+                        correctPoints = parseNum(row['Correct Points'], 0);
+                        wrongPoints = parseNum(row['Wrong Points'], 0);
+                        halfPoints = parseNum(row['Half Points'], 0);
+                        passPoints = parseNum(row['Pass Points'], 0);
+                        roundOrder = parseNum(row['Round Order'], order + 1);
+                    }
 
                     order++;
+
                     await conn.query(
                         `INSERT INTO rounds (event_id, round_order, name, question_count, type, difficulty,
-                            correct_points, wrong_points, half_points, pass_points)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                        [req.params.eventId, order, roundName, parseInt(row.Questions) || 0, type, difficulty,
-                         parseInt(row['Correct Points']) || 10,
-                         parseInt(row['Wrong Points']) || -5,
-                         parseInt(row['Half Points']) || 5,
-                         parseInt(row['Pass Points']) || 0]);
+                            correct_points, wrong_points, half_points, pass_points, question_type)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            req.params.eventId,
+                            roundOrder || order,
+                            roundName,
+                            questions,
+                            roundType,
+                            difficulty,
+                            correctPoints,
+                            wrongPoints,
+                            halfPoints,
+                            passPoints,
+                            questionType
+                        ]);
 
-                    results.rounds.push({ roundName, type, difficulty });
+                    results.rounds.push({ roundName, type: roundType, difficulty });
                 }
             }
 
-            // SETTINGS
             if (wb.Sheets['Settings']) {
                 const settingsData = xlsx.utils.sheet_to_json(wb.Sheets['Settings']);
                 for (const row of settingsData) {
                     if (row['Penalty Points'] !== undefined) {
-                        results.settings.penalty = parseInt(row['Penalty Points']);
+                        await conn.query('UPDATE events SET penalty_points = ? WHERE id = ?',
+                            [parseNum(row['Penalty Points'], -10), req.params.eventId]);
+                        results.settings.penalty = parseNum(row['Penalty Points'], -10);
                     }
                     if (row['Event Name']) {
-                        await conn.query('UPDATE events SET name = ? WHERE id = ?', [row['Event Name'], req.params.eventId]);
+                        await conn.query('UPDATE events SET name = ? WHERE id = ?',
+                            [row['Event Name'], req.params.eventId]);
                         results.settings.eventName = row['Event Name'];
+                    }
+                    if (row['Tie Break Rule']) {
+                        await conn.query('UPDATE events SET tie_break_rule = ? WHERE id = ?',
+                            [row['Tie Break Rule'], req.params.eventId]);
+                        results.settings.tieBreakRule = row['Tie Break Rule'];
                     }
                 }
             }
@@ -716,35 +996,30 @@ app.post('/api/import/full/:eventId', upload.single('file'), async (req, res) =>
     }
 });
 
-// Export full results
 app.get('/api/import/export-results/:eventId', async (req, res) => {
     try {
         const wb = xlsx.utils.book_new();
 
-        // Sheet 1: Final Rankings
         const ranked = await recalcRanks(req.params.eventId);
         const rankingData = [
-            ['Rank', 'Team', 'Short Name', 'Institution', 'Score', 'Correct', 'Wrong', 'Half', 'Penalty', 'Total Answers']
+            ['Rank', 'Team', 'Short Name', 'Institution', 'Score', 'Correct', 'Wrong', 'Half', 'Pass', 'Penalty', 'Total']
         ];
         ranked.forEach(r => {
             rankingData.push([
                 r.rank, r.name, r.short_name, r.institution || '',
                 r.total_score, r.correct_count, r.wrong_count,
-                r.half_count, r.penalty_count, r.total_answers
+                r.half_count, r.pass_count, r.penalty_count, r.total_answers
             ]);
         });
         xlsx.utils.book_append_sheet(wb, xlsx.utils.aoa_to_sheet(rankingData), 'Final Rankings');
 
-        // Sheet 2: Score History
         const [history] = await pool.query(
             `SELECT s.timestamp, t.name as team_name, r.name as round_name,
                 s.question_index, s.action, s.points, s.before_score, s.after_score
              FROM scores s JOIN teams t ON s.team_id = t.id JOIN rounds r ON s.round_id = r.id
              WHERE s.event_id = ? ORDER BY s.timestamp ASC`,
             [req.params.eventId]);
-        const historyData = [
-            ['Time', 'Team', 'Round', 'Q#', 'Action', 'Points', 'Before', 'After']
-        ];
+        const historyData = [['Time', 'Team', 'Round', 'Q#', 'Action', 'Points', 'Before', 'After']];
         history.forEach(h => {
             historyData.push([
                 new Date(h.timestamp).toLocaleString(), h.team_name, h.round_name,

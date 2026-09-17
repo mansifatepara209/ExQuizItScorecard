@@ -37,7 +37,7 @@ function App() {
 
   const forceRefresh = () => setRefreshKey(prev => prev + 1);
 
-  // Event actions
+  // ============ EVENT ACTIONS ============
   const handleStartEvent = async () => {
     if (!window.confirm('Start the event? Teams and rounds will be locked.')) return;
     try {
@@ -51,10 +51,33 @@ function App() {
   };
 
   const handleStopEvent = async () => {
-    if (!window.confirm('Stop the event? You can still resume later.')) return;
+    if (!window.confirm('Stop the event? You can restart later.')) return;
     try {
       await EventService.stop(eventId);
       alert('⏹️ Event stopped');
+      forceRefresh();
+      setMobileOpen(false);
+    } catch (e) {
+      alert('❌ ' + (e.response?.data?.error || e.message));
+    }
+  };
+
+  const handlePauseEvent = async () => {
+    if (!window.confirm('Pause the event? You can resume anytime.')) return;
+    try {
+      await EventService.pause(eventId);
+      alert('⏸️ Event paused');
+      forceRefresh();
+      setMobileOpen(false);
+    } catch (e) {
+      alert('❌ ' + (e.response?.data?.error || e.message));
+    }
+  };
+
+  const handleResumeEvent = async () => {
+    try {
+      await EventService.resume(eventId);
+      alert('▶️ Event resumed');
       forceRefresh();
       setMobileOpen(false);
     } catch (e) {
@@ -83,7 +106,7 @@ function App() {
     }
     try {
       await EventService.resetAll(eventId);
-      alert('🧹 Everything cleared.');
+      alert('🧹 Everything cleared. Fresh start.');
       forceRefresh();
       setView('teams');
       setMobileOpen(false);
@@ -99,7 +122,7 @@ function App() {
 
   const handleViewChange = (newView) => {
     setView(newView);
-    setMobileOpen(false); // close drawer on mobile
+    setMobileOpen(false);
   };
 
   if (loading && !eventState) {
@@ -113,9 +136,10 @@ function App() {
     );
   }
 
+  const isEventLive = Boolean(eventState?.is_started) && !Boolean(eventState?.is_paused);
+
   return (
     <div className="min-h-screen bg-quiz-primary text-quiz-text">
-      {/* ============ SIDEBAR ============ */}
       <Sidebar
         currentView={view}
         onViewChange={handleViewChange}
@@ -126,17 +150,18 @@ function App() {
         eventState={eventState}
         onStartEvent={handleStartEvent}
         onStopEvent={handleStopEvent}
+        onPauseEvent={handlePauseEvent}
+        onResumeEvent={handleResumeEvent}
         onExportResults={() => { setShowExport(true); setMobileOpen(false); }}
         onResetAll={handleResetAll}
       />
 
-      {/* ============ TOP BAR ============ */}
+      {/* Top Bar */}
       <div
         className={`fixed top-0 right-0 z-30 h-14 md:h-16 bg-quiz-secondary/95 backdrop-blur border-b border-quiz-border transition-all duration-300 ${collapsed ? 'lg:left-20' : 'lg:left-64'
           } left-0`}
       >
         <div className="flex items-center justify-between h-full px-3 md:px-6">
-          {/* Left: Mobile menu + Event name */}
           <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
             <button
               onClick={() => setMobileOpen(true)}
@@ -153,26 +178,31 @@ function App() {
                 <p className="text-sm md:text-lg font-bold text-quiz-text truncate">
                   {eventState?.name || 'No Event'}
                 </p>
-                {eventState?.is_started && (
-                  <div className="flex items-center gap-1 px-2 py-0.5 bg-green-500/20 border border-green-500/40 rounded-full flex-shrink-0">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
-                    <span className="text-[9px] md:text-[10px] font-bold text-green-400 uppercase tracking-wider">
-                      Live
-                    </span>
-                  </div>
+
+                {/* ⭐ Live badge — uses Boolean() to handle MySQL's 1/0 */}
+                {isEventLive && (
+                  <span className="px-2 py-0.5 bg-green-500/20 border border-green-500/40 rounded-full text-[10px] md:text-[11px] font-bold text-green-400 uppercase tracking-wider flex-shrink-0">
+                    ● Live
+                  </span>
+                )}
+
+                {/* Paused badge */}
+                {Boolean(eventState?.is_paused) && (
+                  <span className="px-2 py-0.5 bg-yellow-500/20 border border-yellow-500/40 rounded-full text-[10px] md:text-[11px] font-bold text-yellow-400 uppercase tracking-wider flex-shrink-0">
+                    ⏸ Paused
+                  </span>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Right: Theme toggle */}
           <div className="flex items-center gap-2 flex-shrink-0">
             <ThemeToggle />
           </div>
         </div>
       </div>
 
-      {/* ============ MAIN CONTENT ============ */}
+      {/* Main Content */}
       <main
         className={`transition-all duration-300 pt-16 md:pt-20 pb-4 md:pb-6 px-3 md:px-4 lg:px-6 ${collapsed ? 'lg:ml-20' : 'lg:ml-64'
           }`}
@@ -198,15 +228,11 @@ function App() {
           <AudienceScoreboard key={`audience-${refreshKey}`} eventId={eventId} />
         )}
         {view === 'settings' && (
-          <SettingsPanel
-            eventId={eventId}
-            eventState={eventState}
-            onUpdate={forceRefresh}
-          />
+          <SettingsPanel eventId={eventId} eventState={eventState} onUpdate={forceRefresh} />
         )}
 
         {/* Reset Scores */}
-        {view !== 'audience' && eventState?.total_teams > 0 && (
+        {view !== 'audience' && (eventState?.total_teams || 0) > 0 && (
           <div className="mt-6 md:mt-8 pt-4 md:pt-6 border-t border-quiz-border">
             <div className="flex flex-wrap gap-2 md:gap-3 justify-end">
               <button
@@ -221,6 +247,7 @@ function App() {
         )}
       </main>
 
+      {/* Export Modal */}
       {showExport && (
         <ResultsExport
           eventId={eventId}

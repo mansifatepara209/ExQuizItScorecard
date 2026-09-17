@@ -1,14 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { RoundService } from '../services/api';
-import { Plus, Trash2, Edit, X, Check, AlertCircle, Minus, Award } from 'lucide-react';
+import { Plus, Trash2, Edit, X, Check, AlertCircle, Minus, Award, BookOpen, ListChecks } from 'lucide-react';
 
 function RoundManager({ eventId, onUpdate }) {
     const [rounds, setRounds] = useState([]);
     const [showModal, setShowModal] = useState(false);
     const [editing, setEditing] = useState(null);
     const [formData, setFormData] = useState({
-        name: '', questionCount: 10, type: 'regular', difficulty: 'easy',
-        correctPoints: 10, wrongPoints: -5, halfPoints: 5, passPoints: 0
+        name: '',
+        questionCount: 9,
+        type: 'regular',
+        difficulty: 'easy',
+        correctPoints: 10,
+        wrongPoints: 0,
+        halfPoints: 5,
+        passPoints: 0,
+        questionType: ''
     });
 
     useEffect(() => { loadRounds(); }, [eventId]);
@@ -41,19 +48,29 @@ function RoundManager({ eventId, onUpdate }) {
     };
 
     const resetForm = () => setFormData({
-        name: '', questionCount: 10, type: 'regular', difficulty: 'easy',
-        correctPoints: 10, wrongPoints: -5, halfPoints: 5, passPoints: 0
+        name: '',
+        questionCount: 9,
+        type: 'regular',
+        difficulty: 'easy',
+        correctPoints: 10,
+        wrongPoints: 0,
+        halfPoints: 5,
+        passPoints: 0,
+        questionType: ''
     });
 
     const editRound = (round) => {
         setEditing(round);
         setFormData({
-            name: round.name, questionCount: round.question_count,
-            type: round.type, difficulty: round.difficulty,
-            correctPoints: round.correct_points ?? 10,
-            wrongPoints: round.wrong_points ?? -5,
-            halfPoints: round.half_points ?? 5,
-            passPoints: round.pass_points ?? 0
+            name: round.name,
+            questionCount: round.question_count ?? 9,
+            type: round.type,
+            difficulty: round.difficulty,
+            correctPoints: round.correct_points ?? 0,
+            wrongPoints: round.wrong_points ?? 0,
+            halfPoints: round.half_points ?? 0,
+            passPoints: round.pass_points ?? 0,
+            questionType: round.question_type || ''
         });
         setShowModal(true);
     };
@@ -70,14 +87,14 @@ function RoundManager({ eventId, onUpdate }) {
                 <div>
                     <h2 className="text-xl md:text-2xl font-bold text-quiz-gold">Rounds ({rounds.length})</h2>
                     <p className="text-xs md:text-sm text-quiz-muted mt-1 hidden sm:block">
-                        Each round has its own scoring points
+                        Each round has its own scoring points from Excel
                     </p>
                 </div>
                 <button
                     onClick={() => { resetForm(); setEditing(null); setShowModal(true); }}
                     className="px-3 md:px-4 py-2 bg-quiz-gold hover:opacity-80 text-white rounded-lg flex items-center justify-center gap-2 text-sm font-semibold transition"
                 >
-                    <Plus size={16} md:size={18} /> Add Round
+                    <Plus size={16} /> Add Round
                 </button>
             </div>
 
@@ -90,11 +107,16 @@ function RoundManager({ eventId, onUpdate }) {
                             <div className="flex justify-between items-start gap-2">
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                        <span className="text-[10px] font-bold text-quiz-muted">ROUND #{round.round_order}</span>
+                                        <span className="text-[10px] font-bold text-quiz-muted">R#{round.round_order}</span>
                                         <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${round.type === 'buzzer' ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'
                                             }`}>
-                                            {round.type}
+                                            {round.type === 'buzzer' ? '🔔 Buzzer' : '📋 Regular'}
                                         </span>
+                                        {round.question_type && (
+                                            <span className="text-[10px] px-2 py-0.5 rounded font-bold uppercase bg-quiz-accent text-quiz-muted">
+                                                {round.question_type}
+                                            </span>
+                                        )}
                                     </div>
                                     <h3 className="font-bold text-base md:text-lg text-quiz-text truncate">{round.name}</h3>
                                 </div>
@@ -118,7 +140,7 @@ function RoundManager({ eventId, onUpdate }) {
                             <div className="flex justify-between text-xs md:text-sm">
                                 <span className="text-quiz-muted">Difficulty</span>
                                 <span className={`font-bold capitalize ${round.difficulty === 'easy' ? 'text-green-500' :
-                                        round.difficulty === 'moderate' ? 'text-yellow-500' : 'text-red-500'
+                                    round.difficulty === 'moderate' ? 'text-yellow-500' : 'text-red-500'
                                     }`}>
                                     {round.difficulty}
                                 </span>
@@ -126,7 +148,7 @@ function RoundManager({ eventId, onUpdate }) {
 
                             <div className="border-t border-quiz-border pt-3">
                                 <p className="text-[10px] text-quiz-muted uppercase tracking-wider font-semibold mb-2">
-                                    Scoring
+                                    Scoring (from Excel)
                                 </p>
                                 <div className="grid grid-cols-2 gap-2">
                                     <PointsBadge icon={<Check size={12} />} label="Correct" value={formatPoints(round.correct_points)} color="green" />
@@ -142,9 +164,9 @@ function RoundManager({ eventId, onUpdate }) {
 
             {rounds.length === 0 && (
                 <div className="text-center py-12 md:py-16 bg-quiz-secondary rounded-lg border border-dashed border-quiz-border">
-                    <Award size={40} md:size={48} className="text-quiz-muted mx-auto mb-3" />
+                    <Award size={40} className="text-quiz-muted mx-auto mb-3" />
                     <p className="text-lg md:text-xl font-bold text-quiz-muted mb-2">No rounds added yet</p>
-                    <p className="text-xs md:text-sm text-quiz-muted mb-4">Add rounds to get started</p>
+                    <p className="text-xs md:text-sm text-quiz-muted mb-4">Import Excel or add rounds manually</p>
                     <button
                         onClick={() => { resetForm(); setEditing(null); setShowModal(true); }}
                         className="px-4 md:px-6 py-2 bg-quiz-gold hover:opacity-80 text-white rounded-lg font-semibold inline-flex items-center gap-2 text-sm"
@@ -183,25 +205,37 @@ function RoundManager({ eventId, onUpdate }) {
                                         className="w-full px-3 py-2 bg-quiz-primary border border-quiz-border rounded-lg text-quiz-text focus:outline-none focus:border-quiz-gold" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-1 text-quiz-text">Type *</label>
+                                    <label className="block text-sm font-medium mb-1 text-quiz-text">Round Type *</label>
                                     <select value={formData.type}
                                         onChange={e => setFormData({ ...formData, type: e.target.value })}
                                         className="w-full px-3 py-2 bg-quiz-primary border border-quiz-border rounded-lg text-quiz-text focus:outline-none focus:border-quiz-gold">
-                                        <option value="regular">Regular (auto-rotate)</option>
-                                        <option value="buzzer">Buzzer (manual)</option>
+                                        <option value="regular">Regular</option>
+                                        <option value="buzzer">Buzzer</option>
                                     </select>
                                 </div>
                             </div>
 
-                            <div>
-                                <label className="block text-sm font-medium mb-1 text-quiz-text">Difficulty *</label>
-                                <select value={formData.difficulty}
-                                    onChange={e => setFormData({ ...formData, difficulty: e.target.value })}
-                                    className="w-full px-3 py-2 bg-quiz-primary border border-quiz-border rounded-lg text-quiz-text focus:outline-none focus:border-quiz-gold">
-                                    <option value="easy">Easy</option>
-                                    <option value="moderate">Moderate</option>
-                                    <option value="hard">Hard</option>
-                                </select>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-sm font-medium mb-1 text-quiz-text">Difficulty *</label>
+                                    <select value={formData.difficulty}
+                                        onChange={e => setFormData({ ...formData, difficulty: e.target.value })}
+                                        className="w-full px-3 py-2 bg-quiz-primary border border-quiz-border rounded-lg text-quiz-text focus:outline-none focus:border-quiz-gold">
+                                        <option value="easy">Easy</option>
+                                        <option value="moderate">Moderate</option>
+                                        <option value="hard">Hard</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1 text-quiz-text">Question Format</label>
+                                    <select value={formData.questionType}
+                                        onChange={e => setFormData({ ...formData, questionType: e.target.value })}
+                                        className="w-full px-3 py-2 bg-quiz-primary border border-quiz-border rounded-lg text-quiz-text focus:outline-none focus:border-quiz-gold">
+                                        <option value="">— Not set —</option>
+                                        <option value="DIRECT">Direct</option>
+                                        <option value="MCQ">Multiple Choice</option>
+                                    </select>
+                                </div>
                             </div>
 
                             <div className="border-t border-quiz-border pt-4">
@@ -209,9 +243,9 @@ function RoundManager({ eventId, onUpdate }) {
                                     <Award size={16} /> Scoring Points
                                 </p>
                                 <div className="grid grid-cols-2 gap-3">
-                                    <PointInput label="Correct" color="green" value={formData.correctPoints} onChange={v => setFormData({ ...formData, correctPoints: v })} />
-                                    <PointInput label="Half" color="blue" value={formData.halfPoints} onChange={v => setFormData({ ...formData, halfPoints: v })} />
-                                    <PointInput label="Wrong" color="red" value={formData.wrongPoints} onChange={v => setFormData({ ...formData, wrongPoints: v })} />
+                                    <PointInput label="Correct (+)" color="green" value={formData.correctPoints} onChange={v => setFormData({ ...formData, correctPoints: v })} />
+                                    <PointInput label="Half (+)" color="blue" value={formData.halfPoints} onChange={v => setFormData({ ...formData, halfPoints: v })} />
+                                    <PointInput label="Wrong (−)" color="red" value={formData.wrongPoints} onChange={v => setFormData({ ...formData, wrongPoints: v })} />
                                     <PointInput label="Pass" color="gray" value={formData.passPoints} onChange={v => setFormData({ ...formData, passPoints: v })} />
                                 </div>
                             </div>
