@@ -1,6 +1,7 @@
+import BrandHeader from './BrandHeader';
 import React, { useState, useEffect, useRef } from 'react';
 import { RankingService, EventService, ScoringControlService } from '../services/api';
-import { Trophy, Medal, Award, ArrowUp, ArrowDown, Users, Crown, PartyPopper, Rocket } from 'lucide-react';
+import { Trophy, Medal, Award, ArrowUp, ArrowDown, Users, Crown, Maximize2, Minimize2 } from 'lucide-react';
 
 function AudienceScoreboard({ eventId = 1 }) {
     const [rankings, setRankings] = useState([]);
@@ -11,20 +12,22 @@ function AudienceScoreboard({ eventId = 1 }) {
     const [loading, setLoading] = useState(true);
     const [rankChanges, setRankChanges] = useState({});
 
-    // Splash
-    const [splash, setSplash] = useState(null);
-    const [shownSplashes, setShownSplashes] = useState(new Set());
-    const splashTimerRef = useRef(null);
+    const [zoom, setZoom] = useState(() => {
+        return Number(localStorage.getItem('audienceZoom')) || 1;
+    });
 
     const previousRanksRef = useRef({});
 
+    useEffect(() => {
+        localStorage.setItem('audienceZoom', String(zoom));
+    }, [zoom]);
+
     const loadData = async () => {
         try {
-            const [rankingsRes, stateRes, controlRes, splashRes] = await Promise.all([
+            const [rankingsRes, stateRes, controlRes] = await Promise.all([
                 RankingService.getRankings(eventId),
                 EventService.getState(eventId),
-                ScoringControlService.getCurrentTeam(eventId),
-                ScoringControlService.getSplash(eventId)
+                ScoringControlService.getCurrentTeam(eventId)
             ]);
 
             const newRankings = rankingsRes.data;
@@ -55,41 +58,6 @@ function AudienceScoreboard({ eventId = 1 }) {
             });
             setRankChanges(visibleChanges);
             setTimeout(() => setRankChanges({}), 2500);
-
-            // ⭐ SPLASH LOGIC
-            const eventIsActive =
-                (stateRes.data?.is_started === 1 || stateRes.data?.is_started === true) &&
-                (stateRes.data?.is_paused === 0 || stateRes.data?.is_paused === false);
-            const splashData = splashRes.data;
-
-            console.log('📊 Splash data from API:', splashData);
-            console.log('📊 Event active:', eventIsActive);
-
-            if (eventIsActive && splashData?.show_splash) {
-                const isEventComplete = splashData.show_splash === 'event_completed';
-                const splashKey = isEventComplete
-                    ? 'event_completed'
-                    : `${splashData.show_splash}-${splashData.splash_round_id}`;
-
-                console.log('📊 Splash key:', splashKey, 'Already shown:', shownSplashes.has(splashKey));
-
-                if (!shownSplashes.has(splashKey)) {
-                    console.log('🎬 TRIGGERING SPLASH:', splashData.show_splash);
-                    setSplash({
-                        type: splashData.show_splash,
-                        roundId: splashData.splash_round_id,
-                        roundName: splashData.splash_round_name || 'Round',
-                        roundOrder: splashData.splash_round_order || 0
-                    });
-                    setShownSplashes(prev => new Set([...prev, splashKey]));
-                }
-            } else if (!eventIsActive) {
-                setSplash(null);
-            } else if (!splashData?.show_splash) {
-                // ⭐ Splash was cleared in DB (e.g. admin started next round)
-                // Hide any local splash so audience shows normal scoreboard
-                setSplash(null);
-            }
         } catch (error) {
             console.error('Error loading scoreboard:', error);
         } finally {
@@ -103,43 +71,12 @@ function AudienceScoreboard({ eventId = 1 }) {
         return () => clearInterval(interval);
     }, [eventId]);
 
-    useEffect(() => {
-        if (splash) {
-            if (splashTimerRef.current) clearTimeout(splashTimerRef.current);
-
-            // ⭐ "next_round" splash persists until admin starts the next round
-            // (backend clears it via clearSplash when nextRound() is called)
-            if (splash.type === 'next_round') {
-                return () => {
-                    if (splashTimerRef.current) clearTimeout(splashTimerRef.current);
-                };
-            }
-
-            // Other splashes (round_completed, event_completed) auto-hide
-            const duration = 2000;
-            console.log(`⏱️ Splash will hide in ${duration}ms`);
-            splashTimerRef.current = setTimeout(async () => {
-                setSplash(null);
-                // ⭐ Clear from DB so it doesn't re-show on next poll
-                try {
-                    await ScoringControlService.clearSplash(eventId);
-                    console.log('✅ Splash cleared from DB');
-                } catch (err) {
-                    console.warn('Could not clear splash from DB:', err);
-                }
-            }, duration);
-        }
-        return () => {
-            if (splashTimerRef.current) clearTimeout(splashTimerRef.current);
-        };
-    }, [splash, eventId]);
-
     if (loading) {
         return (
             <div className="min-h-screen bg-quiz-primary flex items-center justify-center">
                 <div className="text-center">
-                    <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-quiz-gold mx-auto mb-4"></div>
-                    <p className="text-quiz-text text-xl tracking-widest">LOADING</p>
+                    <div className="animate-spin rounded-full h-20 w-20 border-t-4 border-b-4 border-quiz-gold mx-auto mb-6"></div>
+                    <p className="text-quiz-text text-3xl font-black tracking-widest">LOADING</p>
                 </div>
             </div>
         );
@@ -147,11 +84,21 @@ function AudienceScoreboard({ eventId = 1 }) {
 
     if (rankings.length === 0) {
         return (
-            <div className="min-h-screen bg-quiz-primary flex items-center justify-center">
-                <div className="text-center">
-                    <Trophy size={80} className="text-quiz-muted mx-auto mb-4 opacity-50" />
-                    <p className="text-3xl font-black text-quiz-muted mb-2">NO TEAMS YET</p>
-                    <p className="text-quiz-muted opacity-70">Waiting for the event to begin</p>
+            <div className="min-h-screen flex flex-col relative overflow-hidden">
+                <div
+                    className="absolute inset-0 bg-cover bg-center"
+                    style={{ backgroundImage: 'url(/brand/eqi_poster_26.webp)' }}
+                />
+                <div className="absolute inset-0 bg-white/55" />
+                <div className="relative z-10 flex flex-col flex-1">
+                    <BrandHeader subtitle="Live Scoreboard" />
+                    <div className="flex-1 flex items-center justify-center">
+                        <div className="bg-white rounded-3xl shadow-2xl px-16 py-12 text-center border-4 border-quiz-border">
+                            <Trophy size={120} className="text-quiz-gold mx-auto mb-6" />
+                            <p className="text-6xl font-black text-quiz-text mb-4">NO TEAMS YET</p>
+                            <p className="text-2xl text-quiz-muted font-bold">Waiting for the event to begin</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         );
@@ -172,296 +119,288 @@ function AudienceScoreboard({ eventId = 1 }) {
         { team: topThree[2], position: 3 }
     ].filter(p => p.team);
 
-    const splashBg = splash?.type === 'event_completed'
-        ? 'bg-gradient-to-br from-yellow-500 via-quiz-gold to-purple-700'
-        : splash?.type === 'round_completed'
-            ? 'bg-gradient-to-br from-green-600 via-green-700 to-emerald-800'
-            : 'bg-gradient-to-br from-quiz-gold via-red-500 to-orange-600';
+    // ⭐ BIG FONTS, compact layout
+    const S = {
+        1: {
+            // Header
+            statusBadge: 'text-base md:text-lg px-5 py-2',
+            infoLabel: 'text-xs md:text-sm',
+            infoValue: 'text-xl md:text-2xl',
+            questionNum: 'text-3xl md:text-4xl',
+            // Section headers
+            sectionHead: 'text-lg md:text-2xl',
+            // Podium
+            podiumRank: 'text-3xl md:text-4xl',
+            podiumName: 'text-2xl md:text-4xl',
+            podiumMeta: 'text-base md:text-lg',
+            podiumScore: 'text-5xl md:text-7xl',
+            podiumPts: 'text-sm md:text-base',
+            miniStat: 'text-xl md:text-2xl',
+            miniLabel: 'text-xs md:text-sm',
+            // All Teams
+            listRank: 'text-2xl md:text-3xl',
+            listName: 'text-xl md:text-2xl',
+            listMeta: 'text-sm md:text-base',
+            listStats: 'text-sm md:text-base',
+            listScore: 'text-4xl md:text-5xl',
+            listPts: 'text-xs md:text-sm',
+        },
+        2: {
+            statusBadge: 'text-lg md:text-xl px-6 py-2.5',
+            infoLabel: 'text-sm md:text-base',
+            infoValue: 'text-2xl md:text-3xl',
+            questionNum: 'text-4xl md:text-5xl',
+            sectionHead: 'text-xl md:text-3xl',
+            podiumRank: 'text-4xl md:text-5xl',
+            podiumName: 'text-3xl md:text-5xl',
+            podiumMeta: 'text-lg md:text-2xl',
+            podiumScore: 'text-6xl md:text-8xl',
+            podiumPts: 'text-base md:text-lg',
+            miniStat: 'text-2xl md:text-3xl',
+            miniLabel: 'text-sm md:text-base',
+            listRank: 'text-3xl md:text-4xl',
+            listName: 'text-2xl md:text-3xl',
+            listMeta: 'text-base md:text-xl',
+            listStats: 'text-base md:text-lg',
+            listScore: 'text-5xl md:text-6xl',
+            listPts: 'text-sm md:text-base',
+        },
+    }[zoom];
 
     return (
-        <div className="min-h-screen bg-quiz-primary text-quiz-text flex flex-col overflow-hidden relative">
+        <div className="min-h-screen text-quiz-text flex flex-col overflow-hidden relative">
 
-            {/* ⭐ SPLASH SCREEN */}
-            {splash && (
-                <div className={`fixed inset-0 z-[100] flex items-center justify-center p-4 ${splashBg}`}
-                    style={{ animation: 'splashFadeIn 0.5s ease-out' }}
+            {/* Poster background */}
+            <div
+                className="fixed inset-0 bg-cover bg-center"
+                style={{ backgroundImage: 'url(/brand/eqi_poster_26.webp)' }}
+                aria-hidden="true"
+            />
+            <div className="fixed inset-0 bg-white/55" aria-hidden="true" />
+
+            {/* Foreground */}
+            <div className="relative z-10 flex flex-col flex-1">
+
+                {/* Zoom toggle */}
+                <button
+                    onClick={() => setZoom(z => (z === 1 ? 2 : 1))}
+                    className="fixed top-4 right-4 z-50 px-4 py-2 rounded-lg bg-[#C2185B] text-white font-bold shadow-xl hover:bg-[#8B1538] transition flex items-center gap-2"
+                    title={zoom === 1 ? 'Enlarge for projector' : 'Back to normal size'}
                 >
-                    <div className="text-center animate-scale-in">
-                        {splash.type === 'event_completed' ? (
-                            <>
-                                <div className="flex justify-center mb-6">
-                                    <div className="w-40 h-40 rounded-full bg-white/20 backdrop-blur-sm border-4 border-white/40 flex items-center justify-center">
-                                        <Trophy size={100} className="text-white" />
-                                    </div>
-                                </div>
-                                <h1 className="text-7xl md:text-9xl lg:text-[12rem] font-black text-white mb-4 tracking-tight drop-shadow-2xl leading-none">
-                                    EVENT
-                                </h1>
-                                <p className="text-5xl md:text-7xl lg:text-8xl font-black text-white/95 mb-6 drop-shadow-xl">
-                                    COMPLETE!
-                                </p>
-                                <div className="inline-block px-8 py-4 bg-white/20 backdrop-blur rounded-2xl border-2 border-white/40">
-                                    <p className="text-2xl md:text-4xl font-bold text-white">
-                                        🏆 Congratulations to all teams!
-                                    </p>
-                                </div>
-                            </>
-                        ) : splash.type === 'round_completed' ? (
-                            <>
-                                <div className="flex justify-center mb-6">
-                                    <div className="w-32 h-32 rounded-full bg-white/20 backdrop-blur-sm border-4 border-white/40 flex items-center justify-center">
-                                        <PartyPopper size={80} className="text-white" />
-                                    </div>
-                                </div>
-                                <h1 className="text-6xl md:text-8xl lg:text-9xl font-black text-white mb-4 tracking-tight drop-shadow-2xl">
-                                    ROUND {splash.roundOrder}
-                                </h1>
-                                <p className="text-4xl md:text-6xl lg:text-7xl font-black text-white/95 mb-6 drop-shadow-xl">
-                                    COMPLETED
-                                </p>
-                                <div className="inline-block px-8 py-4 bg-white/20 backdrop-blur rounded-2xl border-2 border-white/40">
-                                    <p className="text-2xl md:text-4xl font-bold text-white">
-                                        {splash.roundName}
-                                    </p>
-                                </div>
-                            </>
-                        ) : (
-                            <>
-                                <div className="flex justify-center mb-6">
-                                    <div className="w-32 h-32 rounded-full bg-white/20 backdrop-blur-sm border-4 border-white/40 flex items-center justify-center">
-                                        <Rocket size={80} className="text-white" />
-                                    </div>
-                                </div>
-                                <p className="text-3xl md:text-5xl font-bold text-white/90 mb-3 tracking-widest">
-                                    NEXT ROUND
-                                </p>
-                                <h1 className="text-7xl md:text-9xl lg:text-[12rem] font-black text-white mb-4 tracking-tight drop-shadow-2xl leading-none">
-                                    R{splash.roundOrder}
-                                </h1>
-                                <div className="inline-block px-10 py-5 bg-white/20 backdrop-blur rounded-2xl border-2 border-white/40">
-                                    <p className="text-3xl md:text-5xl font-black text-white">
-                                        {splash.roundName}
-                                    </p>
-                                </div>
-                            </>
-                        )}
-                    </div>
-                    <div className="absolute top-10 left-10 w-4 h-4 rounded-full bg-white/40 animate-ping"></div>
-                    <div className="absolute top-20 right-20 w-6 h-6 rounded-full bg-white/30 animate-ping" style={{ animationDelay: '0.3s' }}></div>
-                    <div className="absolute bottom-20 left-32 w-5 h-5 rounded-full bg-white/35 animate-ping" style={{ animationDelay: '0.6s' }}></div>
-                </div>
-            )}
+                    {zoom === 1 ? <Maximize2 size={20} /> : <Minimize2 size={20} />}
+                    <span className="text-sm md:text-base">{zoom === 1 ? 'ENLARGE' : 'NORMAL'}</span>
+                </button>
 
-            <header className="flex-shrink-0 px-4 md:px-6 py-3 border-b border-quiz-border bg-quiz-secondary/50 backdrop-blur">
-                <div className="flex items-center justify-between flex-wrap gap-3">
-                    <div className="flex items-center gap-3 md:gap-4 min-w-0">
-                        {eventState?.is_started === true && eventState?.is_paused !== true && (
-                            <div className="flex-shrink-0 flex items-center gap-2 px-3 py-1 rounded-full bg-red-600/20 border border-red-500">
-                                <span className="text-xs font-bold text-red-400 tracking-widest">● LIVE</span>
-                            </div>
-                        )}
-                        {eventState?.is_paused === true && (
-                            <div className="flex-shrink-0 flex items-center gap-2 px-3 py-1 rounded-full bg-yellow-600/20 border border-yellow-500">
-                                <span className="text-xs font-bold text-yellow-400 tracking-widest">⏸ PAUSED</span>
-                            </div>
-                        )}
-                        <h1 className="text-xl md:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-quiz-gold to-red-400 truncate">
-                            {eventState?.name || 'Ex-Quiz-It'}
-                        </h1>
-                    </div>
+                {/* Branded Header */}
+                <header className="flex-shrink-0 bg-white shadow-md border-b-4 border-quiz-gold">
+                    <div className="px-4 md:px-8 py-4 md:py-5 flex items-center justify-between flex-wrap gap-4">
+                        <div className="flex items-center gap-4 md:gap-6 min-w-0">
+                            <img
+                                src="/brand/EX-QUIZ-IT.svg"
+                                alt="Ex-Quiz-It"
+                                className="h-16 md:h-24 w-auto object-contain flex-shrink-0"
+                                onError={(e) => { e.target.src = '/brand/EX-QUIZ-IT.png'; }}
+                            />
+                            {eventState?.is_started === true && eventState?.is_paused !== true && (
+                                <div className={`flex-shrink-0 flex items-center gap-2 rounded-full bg-red-600 border-2 border-red-700 shadow-lg ${S.statusBadge}`}>
+                                    <span className="w-3 h-3 rounded-full bg-white animate-pulse"></span>
+                                    <span className="font-black text-white tracking-widest">LIVE</span>
+                                </div>
+                            )}
+                            {eventState?.is_paused === true && (
+                                <div className={`flex-shrink-0 flex items-center gap-2 rounded-full bg-yellow-500 border-2 border-yellow-600 shadow-lg ${S.statusBadge}`}>
+                                    <span className="font-black text-yellow-950 tracking-widest">⏸ PAUSED</span>
+                                </div>
+                            )}
+                        </div>
 
-                    <div className="flex items-center gap-4 md:gap-6 flex-shrink-0">
-                        <div className="text-right">
-                            <p className="text-[10px] uppercase tracking-widest text-quiz-muted font-bold">Round</p>
-                            <div className="flex items-center gap-2 justify-end">
-                                {currentRoundNumber !== null && (
-                                    <span className={`text-xs md:text-sm font-black px-2 py-0.5 rounded ${isBuzzerRound
-                                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
-                                        : 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
-                                        }`}>
-                                        R{currentRoundNumber}
-                                    </span>
-                                )}
-                                {isBuzzerRound && <span className="text-base md:text-lg">🔔</span>}
-                                <p className={`text-sm md:text-base font-black ${isBuzzerRound ? 'text-purple-400' : 'text-quiz-text'}`}>
-                                    {eventState?.current_round_name || '—'}
+                        <div className="flex items-center gap-4 md:gap-8 flex-shrink-0">
+                            <div className="text-right">
+                                <p className={`${S.infoLabel} uppercase tracking-widest text-quiz-muted font-black`}>Round</p>
+                                <div className="flex items-center gap-2 justify-end mt-1">
+                                    {currentRoundNumber !== null && (
+                                        <span className={`${S.infoValue} font-black px-3 py-1 rounded ${isBuzzerRound
+                                            ? 'bg-purple-600 text-white'
+                                            : 'bg-[#C2185B] text-white'
+                                            }`}>
+                                            R{currentRoundNumber}
+                                        </span>
+                                    )}
+                                    {isBuzzerRound && <span className="text-3xl">🔔</span>}
+                                    <p className={`${S.infoValue} font-black text-quiz-text`}>
+                                        {eventState?.current_round_name || '—'}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="w-px h-16 bg-quiz-border"></div>
+                            <div className="text-right">
+                                <p className={`${S.infoLabel} uppercase tracking-widest text-quiz-muted font-black`}>Question</p>
+                                <p className={`${S.questionNum} font-black text-[#C2185B] leading-none`}>
+                                    {currentQ}
+                                    <span className="text-quiz-muted text-xl">/{totalQ}</span>
                                 </p>
                             </div>
                         </div>
-                        <div className="w-px h-8 bg-quiz-border"></div>
-                        <div className="text-right">
-                            <p className="text-[10px] uppercase tracking-widest text-quiz-muted font-bold">Question</p>
-                            <p className="text-lg md:text-xl font-black text-quiz-gold">
-                                {currentQ}
-                                <span className="text-quiz-muted text-sm">/{totalQ}</span>
-                            </p>
-                        </div>
                     </div>
-                </div>
-            </header>
+                </header>
 
-            <main className="flex-1 overflow-hidden grid grid-rows-[auto_1fr] gap-2 md:gap-3 p-2 md:p-3">
-                {topThree.length > 0 && (
-                    <div className="flex-shrink-0">
-                        <div className="flex items-center gap-2 mb-2 px-1">
-                            <Crown size={16} className="text-yellow-400" />
-                            <h2 className="text-xs md:text-sm font-black uppercase tracking-widest text-quiz-muted">
-                                Top Performers
-                            </h2>
-                            <div className="flex-1 h-px bg-gradient-to-r from-quiz-border to-transparent"></div>
-                        </div>
+                <main className="flex-1 overflow-hidden grid grid-rows-[auto_1fr] gap-2 md:gap-3 p-2 md:p-3">
 
-                        <div className="grid grid-cols-3 gap-2 md:gap-3">
-                            {podiumOrder.map(({ team, position }) => {
-                                const isCurrent = currentTeam?.id === team.id;
-                                const change = rankChanges[team.id];
+                    {/* ⭐ TOP PERFORMERS */}
+                    {topThree.length > 0 && (
+                        <div className="flex-shrink-0">
+                            <div className="flex items-center gap-3 mb-2 px-1">
+                                <Crown size={zoom === 1 ? 28 : 36} className="text-quiz-orange" />
+                                <h2 className={`${S.sectionHead} font-black uppercase tracking-widest text-white drop-shadow-md`}>
+                                    Top Performers
+                                </h2>
+                                <div className="flex-1 h-1 bg-white/50"></div>
+                            </div>
 
-                                const config = {
-                                    1: { gradient: 'from-yellow-500 to-yellow-700', border: 'border-yellow-400', glow: 'shadow-yellow-500/50', medal: '🥇', icon: <Trophy size={28} className="text-yellow-200 drop-shadow-lg" />, bgTint: 'bg-gradient-to-br from-yellow-500/20 to-transparent' },
-                                    2: { gradient: 'from-gray-400 to-gray-600', border: 'border-gray-400', glow: 'shadow-gray-400/40', medal: '🥈', icon: <Medal size={24} className="text-gray-100 drop-shadow-lg" />, bgTint: 'bg-gradient-to-br from-gray-400/20 to-transparent' },
-                                    3: { gradient: 'from-orange-500 to-orange-700', border: 'border-orange-400', glow: 'shadow-orange-500/40', medal: '🥉', icon: <Award size={24} className="text-orange-100 drop-shadow-lg" />, bgTint: 'bg-gradient-to-br from-orange-500/20 to-transparent' }
-                                }[position];
-
-                                return (
-                                    <div key={team.id}
-                                        className={`relative rounded-2xl border-2 ${config.border} ${config.bgTint} backdrop-blur overflow-hidden transition-all ${config.glow} shadow-2xl ${isCurrent ? 'ring-4 ring-quiz-gold' : ''}`}>
-                                        <div className="absolute top-2 right-2">
-                                            <span className="text-2xl md:text-3xl">{config.medal}</span>
-                                        </div>
-
-                                        {isCurrent && (
-                                            <div className="absolute -top-0 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-quiz-gold text-white text-[9px] font-black uppercase tracking-widest rounded-b-md shadow-lg z-10">
-                                                {isBuzzerRound ? '🔔 Buzzing' : '🎤 Answering'}
-                                            </div>
-                                        )}
-
-                                        {change && (
-                                            <div className={`absolute top-2 left-2 w-6 h-6 rounded-full flex items-center justify-center shadow-lg z-10 ${change === 'up' ? 'bg-green-500' : 'bg-red-500'
-                                                }`}>
-                                                {change === 'up' ? <ArrowUp size={14} className="text-white" /> : <ArrowDown size={14} className="text-white" />}
-                                            </div>
-                                        )}
-
-                                        <div className="p-3 md:p-4 pt-4 md:pt-6">
-                                            <div className={`inline-flex items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-xl bg-gradient-to-br ${config.gradient} text-white font-black text-xl md:text-2xl shadow-lg mb-2`}>
-                                                {team.rank}
-                                            </div>
-                                            <div className="mb-2">{config.icon}</div>
-                                            <h3 className="text-base md:text-2xl font-black text-quiz-text truncate leading-tight mb-0.5">
-                                                {team.name}
-                                            </h3>
-                                            <p className="text-[10px] md:text-xs text-quiz-muted truncate mb-2">
-                                                {team.short_name}{team.institution && ` • ${team.institution}`}
-                                            </p>
-                                            <div className="flex items-baseline gap-1">
-                                                <span className="text-3xl md:text-5xl font-black text-quiz-gold leading-none">{team.total_score}</span>
-                                                <span className="text-[10px] uppercase tracking-widest text-quiz-muted font-bold">pts</span>
-                                            </div>
-
-                                            <div className="grid grid-cols-5 gap-1 mt-3 pt-3 border-t border-quiz-border/50">
-                                                <MiniCount label="T" value={team.total_answers || 0} color="text-quiz-text" />
-                                                <MiniCount label="✓" value={team.correct_count || 0} color="text-green-500" />
-                                                <MiniCount label="✗" value={team.wrong_count || 0} color="text-red-500" />
-                                                <MiniCount label="P" value={team.pass_count || 0} color="text-quiz-muted" />
-                                                <MiniCount label="⚖" value={team.penalty_count || 0} color="text-red-700" />
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
-
-                {rest.length > 0 && (
-                    <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-                        <div className="flex items-center gap-2 mb-2 px-1">
-                            <Users size={16} className="text-quiz-muted" />
-                            <h2 className="text-xs md:text-sm font-black uppercase tracking-widest text-quiz-muted">All Teams</h2>
-                            <div className="flex-1 h-px bg-gradient-to-r from-quiz-border to-transparent"></div>
-                            <span className="text-xs text-quiz-muted font-semibold">{rest.length} teams</span>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto">
-                            <div className={`grid gap-2 ${rest.length <= 3 ? 'grid-cols-1 md:grid-cols-3' :
-                                rest.length <= 6 ? 'grid-cols-2 md:grid-cols-3' :
-                                    rest.length <= 9 ? 'grid-cols-2 md:grid-cols-3' :
-                                        'grid-cols-2 md:grid-cols-4'
-                                }`}>
-                                {rest.map((team) => {
+                            <div className="grid grid-cols-3 gap-2 md:gap-3">
+                                {podiumOrder.map(({ team, position }) => {
                                     const isCurrent = currentTeam?.id === team.id;
                                     const change = rankChanges[team.id];
 
+                                    const config = {
+                                        1: { bg: 'bg-white', border: 'border-yellow-500', shadow: 'shadow-yellow-500/50', medal: '🥇', gradient: 'from-yellow-500 to-yellow-700', icon: <Trophy size={zoom === 1 ? 40 : 52} className="text-yellow-600" /> },
+                                        2: { bg: 'bg-white', border: 'border-gray-400', shadow: 'shadow-gray-400/50', medal: '🥈', gradient: 'from-gray-400 to-gray-600', icon: <Medal size={zoom === 1 ? 36 : 48} className="text-gray-600" /> },
+                                        3: { bg: 'bg-white', border: 'border-orange-500', shadow: 'shadow-orange-500/50', medal: '🥉', gradient: 'from-orange-500 to-orange-700', icon: <Award size={zoom === 1 ? 36 : 48} className="text-orange-600" /> }
+                                    }[position];
+
                                     return (
                                         <div key={team.id}
-                                            className={`relative flex items-center gap-3 p-2.5 md:p-3 rounded-xl bg-quiz-secondary border-2 ${isCurrent ? 'border-quiz-gold ring-2 ring-quiz-gold/50' : 'border-quiz-border'
-                                                } transition-all`}>
+                                            className={`relative rounded-xl border-4 ${config.border} ${config.bg} overflow-hidden transition-all ${config.shadow} shadow-xl ${isCurrent ? 'ring-4 ring-[#C2185B]' : ''}`}>
+                                            <div className="absolute top-2 right-2">
+                                                <span className={`${zoom === 1 ? 'text-4xl md:text-5xl' : 'text-5xl md:text-6xl'} drop-shadow`}>{config.medal}</span>
+                                            </div>
+
                                             {isCurrent && (
-                                                <div className="absolute -top-2 left-2 px-2 py-0.5 bg-quiz-gold text-white text-[8px] font-black uppercase tracking-widest rounded shadow-md z-10">
+                                                <div className={`absolute top-0 left-1/2 -translate-x-1/2 bg-[#C2185B] text-white font-black uppercase tracking-widest rounded-b-md shadow-lg z-10 ${zoom === 1 ? 'px-4 py-0.5 text-sm' : 'px-5 py-1 text-base'}`}>
                                                     {isBuzzerRound ? '🔔 Buzzing' : '🎤 Answering'}
                                                 </div>
                                             )}
 
                                             {change && (
-                                                <div className={`absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center shadow-lg ${change === 'up' ? 'bg-green-500' : 'bg-red-500'
-                                                    }`}>
-                                                    {change === 'up' ? <ArrowUp size={12} className="text-white" /> : <ArrowDown size={12} className="text-white" />}
+                                                <div className={`absolute top-2 left-2 rounded-full flex items-center justify-center shadow-lg z-10 ${change === 'up' ? 'bg-green-500' : 'bg-red-500'} ${zoom === 1 ? 'w-8 h-8 md:w-10 md:h-10' : 'w-12 h-12'}`}>
+                                                    {change === 'up' ? <ArrowUp size={zoom === 1 ? 18 : 24} className="text-white" /> : <ArrowDown size={zoom === 1 ? 18 : 24} className="text-white" />}
                                                 </div>
                                             )}
 
-                                            <div className="flex-shrink-0 w-11 h-11 md:w-12 md:h-12 rounded-xl bg-quiz-accent border border-quiz-border flex items-center justify-center font-black text-lg md:text-xl text-quiz-text">
-                                                {team.rank}
-                                            </div>
+                                            <div className={`${zoom === 1 ? 'p-3 md:p-4' : 'p-5 md:p-6'}`}>
+                                                {/* Rank badge + icon inline */}
+                                                <div className="flex items-center gap-3 mb-2">
+                                                    <div className={`inline-flex items-center justify-center rounded-xl bg-gradient-to-br ${config.gradient} text-white font-black shadow-lg ${S.podiumRank} ${zoom === 1 ? 'w-12 h-12 md:w-14 md:h-14' : 'w-16 h-16 md:w-20 md:h-20'}`}>
+                                                        {team.rank}
+                                                    </div>
+                                                    {config.icon}
+                                                </div>
 
-                                            <div className="flex-1 min-w-0">
-                                                <h3 className="font-black text-sm md:text-base text-quiz-text truncate">{team.name}</h3>
-                                                <p className="text-[10px] md:text-xs text-quiz-muted truncate">
+                                                <h3 className={`${S.podiumName} font-black text-quiz-text truncate leading-tight`}>
+                                                    {team.name}
+                                                </h3>
+                                                <p className={`${S.podiumMeta} font-bold text-quiz-muted truncate mt-0.5 mb-2`}>
                                                     {team.short_name}{team.institution && ` • ${team.institution}`}
                                                 </p>
-                                                <div className="flex gap-2 mt-1 text-[10px] text-quiz-muted">
-                                                    <span>T: <span className="text-quiz-text font-bold">{team.total_answers || 0}</span></span>
-                                                    <span>✓: <span className="text-green-500 font-bold">{team.correct_count || 0}</span></span>
-                                                    <span>✗: <span className="text-red-500 font-bold">{team.wrong_count || 0}</span></span>
-                                                    <span>P: <span className="text-quiz-text font-bold">{team.pass_count || 0}</span></span>
-                                                    <span>⚖: <span className="text-red-700 font-bold">{team.penalty_count || 0}</span></span>
+                                                <div className="flex items-baseline gap-2">
+                                                    <span className={`${S.podiumScore} font-black text-[#C2185B] leading-none`}>{team.total_score}</span>
+                                                    <span className={`${S.podiumPts} uppercase tracking-widest text-quiz-muted font-black`}>pts</span>
                                                 </div>
-                                            </div>
 
-                                            <div className="text-right flex-shrink-0">
-                                                <div className="text-2xl md:text-3xl font-black text-quiz-gold leading-none">{team.total_score}</div>
-                                                <div className="text-[8px] uppercase tracking-widest text-quiz-muted mt-0.5">pts</div>
+                                                <div className="grid grid-cols-5 gap-2 mt-3 pt-3 border-t-2 border-quiz-border">
+                                                    <MiniCount label="T" value={team.total_answers || 0} color="text-quiz-text" size={S.miniStat} labelSize={S.miniLabel} />
+                                                    <MiniCount label="✓" value={team.correct_count || 0} color="text-green-600" size={S.miniStat} labelSize={S.miniLabel} />
+                                                    <MiniCount label="✗" value={team.wrong_count || 0} color="text-red-600" size={S.miniStat} labelSize={S.miniLabel} />
+                                                    <MiniCount label="P" value={team.pass_count || 0} color="text-quiz-muted" size={S.miniStat} labelSize={S.miniLabel} />
+                                                    <MiniCount label="⚖" value={team.penalty_count || 0} color="text-red-800" size={S.miniStat} labelSize={S.miniLabel} />
+                                                </div>
                                             </div>
                                         </div>
                                     );
                                 })}
                             </div>
                         </div>
-                    </div>
-                )}
-            </main>
+                    )}
 
-            <style>{`
-                @keyframes splashFadeIn {
-                    from { opacity: 0; }
-                    to { opacity: 1; }
-                }
-                @keyframes scaleIn {
-                    from { opacity: 0; transform: scale(0.7); }
-                    to { opacity: 1; transform: scale(1); }
-                }
-                .animate-scale-in {
-                    animation: scaleIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
-                }
-            `}</style>
+                    {/* ⭐ ALL TEAMS — COMPACT CARDS, BIG FONTS */}
+                    {rest.length > 0 && (
+                        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+                            <div className="flex items-center gap-3 mb-2 px-1">
+                                <Users size={zoom === 1 ? 28 : 36} className="text-white drop-shadow-md" />
+                                <h2 className={`${S.sectionHead} font-black uppercase tracking-widest text-white drop-shadow-md`}>All Teams</h2>
+                                <div className="flex-1 h-1 bg-white/50"></div>
+                                <span className={`${S.sectionHead} text-white font-black drop-shadow-md`}>{rest.length} teams</span>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto">
+                                <div className={`grid gap-2 md:gap-3 ${rest.length <= 6 ? 'grid-cols-1 md:grid-cols-2' :
+                                        rest.length <= 12 ? 'grid-cols-1 md:grid-cols-2' :
+                                            'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
+                                    }`}>
+                                    {rest.map((team) => {
+                                        const isCurrent = currentTeam?.id === team.id;
+                                        const change = rankChanges[team.id];
+
+                                        return (
+                                            <div key={team.id}
+                                                className={`relative flex items-center gap-3 p-2.5 md:p-3 rounded-lg bg-white border-2 ${isCurrent ? 'border-[#C2185B] ring-2 ring-[#C2185B]/40' : 'border-quiz-border'} transition-all shadow-md`}>
+                                                {isCurrent && (
+                                                    <div className={`absolute -top-2.5 left-3 bg-[#C2185B] text-white font-black uppercase tracking-widest rounded shadow-md z-10 ${zoom === 1 ? 'px-3 py-0.5 text-xs' : 'px-4 py-0.5 text-sm'}`}>
+                                                        {isBuzzerRound ? '🔔 Buzzing' : '🎤 Answering'}
+                                                    </div>
+                                                )}
+
+                                                {change && (
+                                                    <div className={`absolute -top-2 -right-2 rounded-full flex items-center justify-center shadow-lg ${change === 'up' ? 'bg-green-500' : 'bg-red-500'} ${zoom === 1 ? 'w-7 h-7' : 'w-9 h-9'}`}>
+                                                        {change === 'up' ? <ArrowUp size={zoom === 1 ? 16 : 20} className="text-white" /> : <ArrowDown size={zoom === 1 ? 16 : 20} className="text-white" />}
+                                                    </div>
+                                                )}
+
+                                                {/* Rank badge — SMALLER */}
+                                                <div className={`flex-shrink-0 rounded-lg bg-quiz-accent border-2 border-quiz-border flex items-center justify-center font-black text-quiz-text ${S.listRank} ${zoom === 1 ? 'w-12 h-12 md:w-14 md:h-14' : 'w-16 h-16 md:w-20 md:h-20'}`}>
+                                                    {team.rank}
+                                                </div>
+
+                                                {/* Name + Meta + Stats */}
+                                                <div className="flex-1 min-w-0">
+                                                    <h3 className={`${S.listName} font-black text-quiz-text truncate leading-tight`}>
+                                                        {team.name}
+                                                    </h3>
+                                                    <p className={`${S.listMeta} font-bold text-quiz-muted truncate mt-0.5`}>
+                                                        {team.short_name}{team.institution && ` • ${team.institution}`}
+                                                    </p>
+                                                    <div className={`flex flex-wrap gap-2 md:gap-3 mt-1 ${S.listStats} font-black text-quiz-muted`}>
+                                                        <span>T: <span className="text-quiz-text">{team.total_answers || 0}</span></span>
+                                                        <span>✓: <span className="text-green-600">{team.correct_count || 0}</span></span>
+                                                        <span>✗: <span className="text-red-600">{team.wrong_count || 0}</span></span>
+                                                        <span>P: <span className="text-quiz-text">{team.pass_count || 0}</span></span>
+                                                        <span>⚖: <span className="text-red-800">{team.penalty_count || 0}</span></span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Score */}
+                                                <div className="text-right flex-shrink-0">
+                                                    <div className={`${S.listScore} font-black text-[#C2185B] leading-none`}>{team.total_score}</div>
+                                                    <div className={`${S.listPts} uppercase tracking-widest text-quiz-muted mt-0.5 font-black`}>pts</div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </main>
+            </div>
         </div>
     );
 }
 
-function MiniCount({ label, value, color }) {
+function MiniCount({ label, value, color, size, labelSize }) {
     return (
         <div className="text-center">
-            <p className="text-[9px] uppercase text-quiz-muted font-bold leading-tight">{label}</p>
-            <p className={`text-xs md:text-sm font-black ${color} leading-tight`}>{value}</p>
+            <p className={`${labelSize} uppercase text-quiz-muted font-black leading-tight`}>{label}</p>
+            <p className={`${size} font-black ${color} leading-tight`}>{value}</p>
         </div>
     );
 }

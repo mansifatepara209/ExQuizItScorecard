@@ -7,6 +7,12 @@ import xlsx from 'xlsx';
 
 dotenv.config();
 
+// ⭐ DEBUG — see what dotenv loaded
+console.log('🔍 DEBUG DB_HOST:', process.env.DB_HOST);
+console.log('🔍 DEBUG DB_USER:', process.env.DB_USER);
+console.log('🔍 DEBUG DB_PASSWORD:', process.env.DB_PASSWORD ? `SET (length: ${process.env.DB_PASSWORD.length})` : '❌ NOT SET');
+console.log('🔍 DEBUG DB_NAME:', process.env.DB_NAME);
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -25,7 +31,14 @@ pool.getConnection()
     .then(conn => { console.log('✅ MySQL connected'); conn.release(); })
     .catch(err => console.error('❌ MySQL failed:', err.message));
 
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', credentials: true }));
+app.use(cors({
+    origin: [
+        'http://localhost:5173',
+        /^http:\/\/10\.\d+\.\d+\.\d+:\d+$/,     // ⭐ Allow 10.x.x.x (your network)
+        /^http:\/\/192\.168\.\d+\.\d+:\d+$/,    // Allow 192.168.x.x (in case network changes)
+    ],
+    credentials: true
+}));
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
@@ -529,6 +542,39 @@ app.post('/api/scoring/show-round-completed/:eventId', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ⭐ NEW: Show "Next Round" splash in audience immediately when round completes
+app.post('/api/scoring/show-next-round/:eventId', async (req, res) => {
+    try {
+        const [eventRow] = await pool.query('SELECT current_round_id FROM events WHERE id = ?', [req.params.eventId]);
+        const currentRoundId = eventRow[0]?.current_round_id;
+
+        if (!currentRoundId) {
+            return res.status(400).json({ error: 'No current round' });
+        }
+
+        const [currentRoundRow] = await pool.query('SELECT round_order FROM rounds WHERE id = ?', [currentRoundId]);
+        const currentOrder = currentRoundRow[0]?.round_order;
+
+        const [nextRounds] = await pool.query(
+            'SELECT id, name, round_order FROM rounds WHERE event_id = ? AND round_order > ? ORDER BY round_order ASC LIMIT 1',
+            [req.params.eventId, currentOrder]
+        );
+
+        if (nextRounds.length === 0) {
+            return res.status(404).json({ error: 'No next round exists' });
+        }
+
+        const nr = nextRounds[0];
+
+        await pool.query(
+            `UPDATE events SET show_splash = 'next_round', splash_round_id = ? WHERE id = ?`,
+            [nr.id, req.params.eventId]
+        );
+
+        res.json({ success: true, nextRound: nr });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Get splash state (used by audience)
 app.get('/api/event/splash/:eventId', async (req, res) => {
     try {
@@ -602,16 +648,16 @@ app.post('/api/scoring/next-round/:eventId', async (req, res) => {
             newRegular = e.regular_round_sequence_index + 1;
         }
 
-        await conn.query(
+                await conn.query(
             `UPDATE events SET 
                 current_round_id = ?, 
                 current_question_index = 0, 
                 regular_round_sequence_index = ?, 
                 current_buzzer_team_id = NULL,
-                show_splash = 'round_started',
-                splash_round_id = ?
+                show_splash = NULL,
+                splash_round_id = NULL
              WHERE id = ?`,
-            [nextRound.id, newRegular, nextRound.id, req.params.eventId]
+            [nextRound.id, newRegular, req.params.eventId]
         );
 
         await conn.commit();
@@ -1036,8 +1082,9 @@ app.get('/api/import/export-results/:eventId', async (req, res) => {
 });
 
 // ==================== START ====================
-app.listen(PORT, () => {
-    console.log(`🚀 Server: http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server (local):   http://localhost:${PORT}`);
+    console.log(`🚀 Server (network): http://10.10.17.95:${PORT}`);
     console.log(`📊 DB: ${process.env.DB_NAME || 'ex_quiz_it'}`);
     console.log(`✅ All routes loaded!`);
 });

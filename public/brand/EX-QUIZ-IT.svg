@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_2" data-name="Layer 2" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 806.16 312.35">
+  <defs>
+    <filter id="drop-shadow-1" filterUnits="userSpaceOnUse">
+      <feOffset dx="0" dy="0"/>
+      <feGaussianBlur result="blur" stdDeviation="5"/>
+      <feFlood flood-color="#010101" flood-opacity=".3"/>
+      <feComposite in2="blur" operator="in"/>
+      <feComposite in="SourceGraphic"/>
+    </filter>
+    <linearGradient id="linear-gradient" x1="676.07" y1="67.28" x2="756.69" y2="67.28" gradientUnits="userSpaceOnUse">
+      <stop offset=".38" stop-color="#b01e50"/>
+      <stop offset=".7" stop-color="#db1961"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-2" x1="746.07" y1="100.28" x2="795.64" y2="100.28" gradientUnits="userSpaceOnUse">
+      <stop offset=".13" stop-color="#b01e50"/>
+      <stop offset=".7" stop-color="#db1961"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-3" x1="646.69" y1="39.28" x2="676.07" y2="39.28" gradientUnits="userSpaceOnUse">
+      <stop offset=".45" stop-color="#f8951d"/>
+      <stop offset=".84" stop-color="#fbae48"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-4" x1="700.58" y1="11.28" x2="726.14" y2="11.28" xlink:href="#linear-gradient-3"/>
+    <linearGradient id="linear-gradient-5" x1="747.25" y1="41.14" x2="797.59" y2="41.14" gradientUnits="userSpaceOnUse">
+      <stop offset=".2" stop-color="#662b82"/>
+      <stop offset=".25" stop-color="#692b85"/>
+      <stop offset=".47" stop-color="#732f8e"/>
+      <stop offset=".73" stop-color="#773092"/>
+    </linearGradient>
+  </defs>
+  <g id="Layer_11" data-name="Layer 11">
+    <g id="Layer_9" data-name="Layer 9">
+      <g>
+        <polygon points="85.14 297.28 15.14 185.44 85.14 73.6 721.14 73.6 791.14 185.44 721.14 297.28 85.14 297.28" fill="#f5f6f6" filter="url(#drop-shadow-1)"/>
+        <polygon points="696.22 102.28 676.07 67.28 696.22 32.28 736.53 32.28 756.69 67.28 736.53 102.28 696.22 102.28" fill="url(#linear-gradient)"/>
+        <polygon points="760.52 113.28 753.07 100.28 760.52 87.28 775.41 87.28 782.86 100.28 775.41 113.28 760.52 113.28" fill="url(#linear-gradient-2)"/>
+        <polygon points="654.03 52.28 646.69 39.28 654.03 26.28 668.72 26.28 676.07 39.28 668.72 52.28 654.03 52.28" fill="url(#linear-gradient-3)"/>
+        <polygon points="706.97 22.57 700.58 11.28 706.97 0 719.75 0 726.14 11.28 719.75 22.57 706.97 22.57" fill="url(#linear-gradient-4)"/>
+        <polygon points="764.42 57.14 755.25 41.14 764.42 25.14 782.77 25.14 791.94 41.14 782.77 57.14 764.42 57.14" fill="url(#linear-gradient-5)"/>
+        <text transform="translate(703.75 86.9)" fill="#f5f6f6" font-family="PalatinoLinotype-Bold, &apos;Palatino Linotype&apos;" font-size="57.57" font-weight="700"><tspan x="0" y="0">?</tspan></text>
+        <text transform="translate(102.04 210.7)" fill="#c01e57" font-family="Swiss721BT-BlackNo2, &apos;Swis721 Blk2 BT&apos;" font-size="106.55" font-weight="800"><tspan x="0" y="0">Ex-Quiz-It</tspan></text>
+        <text transform="translate(214.14 252.86)" fill="#231f20" font-family="Swiss721BT-BoldCondensed, &apos;Swis721 Cn BT&apos;" font-size="32.39" font-weight="700"><tspan x="0" y="0">An Exquisite Journey of Knowledge</tspan></text>
+      </g>
+    </g>
+  </g>
+</svg>

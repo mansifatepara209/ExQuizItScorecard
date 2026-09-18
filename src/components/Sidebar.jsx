@@ -24,7 +24,8 @@ function Sidebar({
         { id: 'teams', label: 'Teams', icon: Users },
         { id: 'rounds', label: 'Rounds', icon: Layers },
         { id: 'import', label: 'Import Excel', icon: Upload },
-        { id: 'scoring', label: 'Live Scoring', icon: Play },
+        { id: 'live', label: 'Live View', icon: Monitor },       // ⭐ NEW — combined split-screen
+        { id: 'scoring', label: 'Scoring', icon: Play },
         { id: 'audience', label: 'Audience', icon: Monitor },
         { id: 'settings', label: 'Settings', icon: Settings }
     ];
@@ -49,18 +50,15 @@ function Sidebar({
                     } w-72 ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
                     }`}
             >
-                {/* Header with single toggle */}
-                <div className={`flex items-center border-b border-quiz-border h-14 md:h-16 px-3 md:px-4 flex-shrink-0 ${isCollapsed ? 'lg:justify-center' : 'justify-between'
+                {/* ⭐ Header with logo */}
+                <div className={`flex items-center border-b border-quiz-border h-16 md:h-20 px-3 md:px-4 flex-shrink-0 ${isCollapsed ? 'lg:justify-center' : 'justify-between'
                     }`}>
-                    <div className="flex items-center gap-2">
-                        <div className="w-9 h-9 rounded-lg bg-quiz-gold flex items-center justify-center flex-shrink-0">
-                            <span className="text-white font-black text-sm">EQ</span>
-                        </div>
-                        <h1 className={`text-lg md:text-xl font-bold text-quiz-gold whitespace-nowrap ${isCollapsed ? 'lg:hidden' : ''
-                            }`}>
-                            Ex-Quiz-It
-                        </h1>
-                    </div>
+                    <img
+                        src="/brand/EX-QUIZ-IT.png"
+                        alt="Ex-Quiz-It"
+                        className={`object-contain transition-all ${isCollapsed ? 'lg:h-10 lg:w-10' : 'h-10 md:h-12 w-auto'
+                            }`}
+                    />
 
                     <button
                         onClick={onMobileClose}
@@ -91,8 +89,8 @@ function Sidebar({
                                         onClick={() => onViewChange(item.id)}
                                         title={isCollapsed ? item.label : ''}
                                         className={`w-full flex items-center gap-3 px-3 py-2.5 md:py-3 rounded-lg transition ${isActive
-                                                ? 'bg-quiz-gold text-white shadow-lg shadow-quiz-gold/30'
-                                                : 'text-quiz-muted hover:text-quiz-text hover:bg-quiz-accent'
+                                            ? 'bg-quiz-gold text-white shadow-lg shadow-quiz-gold/30'
+                                            : 'text-quiz-muted hover:text-quiz-text hover:bg-quiz-accent'
                                             } ${isCollapsed ? 'lg:justify-center' : ''}`}
                                     >
                                         <Icon size={20} className="flex-shrink-0" />
@@ -109,19 +107,19 @@ function Sidebar({
 
                 {/* Bottom controls */}
                 <div className="border-t border-quiz-border p-2 md:p-3 space-y-1.5 md:space-y-2 flex-shrink-0">
-                    {/* ⭐ LIVE badge — uses Boolean-safe check */}
+                    {/* ⭐ LIVE badge */}
                     {isLive && (
-                        <div className="flex items-center justify-center px-3 py-2 bg-green-900/30 border border-green-700 rounded-lg">
-                            <span className="text-xs font-bold text-green-400 uppercase tracking-wider">
+                        <div className="flex items-center justify-center px-3 py-2 bg-green-500/20 border border-green-500 rounded-lg">
+                            <span className="text-xs font-bold text-green-600 uppercase tracking-wider">
                                 ● LIVE
                             </span>
                         </div>
                     )}
 
-                    {/* ⭐ PAUSED badge — uses Boolean-safe check */}
+                    {/* ⭐ PAUSED badge */}
                     {isPaused && (
-                        <div className="flex items-center justify-center px-3 py-2 bg-yellow-900/30 border border-yellow-700 rounded-lg">
-                            <span className="text-xs font-bold text-yellow-400 uppercase tracking-wider">
+                        <div className="flex items-center justify-center px-3 py-2 bg-yellow-500/20 border border-yellow-500 rounded-lg">
+                            <span className="text-xs font-bold text-yellow-600 uppercase tracking-wider">
                                 ⏸ PAUSED
                             </span>
                         </div>
@@ -191,7 +189,7 @@ function Sidebar({
                     <button
                         onClick={onResetAll}
                         title={isCollapsed ? 'Reset All' : ''}
-                        className={`w-full flex items-center gap-2 px-3 py-2.5 bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-600/40 rounded-lg transition font-semibold text-sm ${isCollapsed ? 'lg:justify-center' : ''
+                        className={`w-full flex items-center gap-2 px-3 py-2.5 bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white border border-red-600/40 rounded-lg transition font-semibold text-sm ${isCollapsed ? 'lg:justify-center' : ''
                             }`}
                     >
                         <RotateCcw size={18} className="flex-shrink-0" />

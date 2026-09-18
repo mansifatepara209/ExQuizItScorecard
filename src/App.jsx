@@ -7,6 +7,7 @@ import RoundManager from './components/RoundManager';
 import ExcelImport from './components/ExcelImport';
 import ScoringDashboard from './components/ScoringDashboard';
 import AudienceScoreboard from './components/AudienceScoreboard';
+import CombinedDashboard from './components/CombinedDashboard';
 import SettingsPanel from './components/SettingsPanel';
 import ResultsExport from './components/ResultsExport';
 import { Menu, RotateCcw } from 'lucide-react';
@@ -179,14 +180,12 @@ function App() {
                   {eventState?.name || 'No Event'}
                 </p>
 
-                {/* ⭐ Live badge — uses Boolean() to handle MySQL's 1/0 */}
                 {isEventLive && (
                   <span className="px-2 py-0.5 bg-green-500/20 border border-green-500/40 rounded-full text-[10px] md:text-[11px] font-bold text-green-400 uppercase tracking-wider flex-shrink-0">
                     ● Live
                   </span>
                 )}
 
-                {/* Paused badge */}
                 {Boolean(eventState?.is_paused) && (
                   <span className="px-2 py-0.5 bg-yellow-500/20 border border-yellow-500/40 rounded-full text-[10px] md:text-[11px] font-bold text-yellow-400 uppercase tracking-wider flex-shrink-0">
                     ⏸ Paused
@@ -216,6 +215,14 @@ function App() {
         {view === 'import' && (
           <ExcelImport eventId={eventId} onImportComplete={handleImportComplete} />
         )}
+        {view === 'live' && (
+          <CombinedDashboard
+            key={`live-${refreshKey}`}
+            eventId={eventId}
+            eventState={eventState}
+            onUpdate={forceRefresh}
+          />
+        )}
         {view === 'scoring' && (
           <ScoringDashboard
             key={`scoring-${refreshKey}`}
@@ -232,7 +239,7 @@ function App() {
         )}
 
         {/* Reset Scores */}
-        {view !== 'audience' && (eventState?.total_teams || 0) > 0 && (
+        {view !== 'audience' && view !== 'live' && (eventState?.total_teams || 0) > 0 && (
           <div className="mt-6 md:mt-8 pt-4 md:pt-6 border-t border-quiz-border">
             <div className="flex flex-wrap gap-2 md:gap-3 justify-end">
               <button

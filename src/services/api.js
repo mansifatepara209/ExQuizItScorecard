@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 const api = axios.create({ baseURL: API_URL, timeout: 60000 });
 
 api.interceptors.response.use(
@@ -57,10 +57,9 @@ export const ScoringControlService = {
     nextQuestion: (eventId) => api.post(`/scoring/next-question/${eventId}`),
     setRound: (eventId, roundId) => api.post(`/scoring/set-round/${eventId}/${roundId}`),
     setBuzzerTeam: (eventId, teamId) => api.post(`/scoring/set-buzzer-team/${eventId}`, { teamId }),
-    // Splash + Round control
     showRoundCompleted: (eventId) => api.post(`/scoring/show-round-completed/${eventId}`),
     showEventCompleted: (eventId) => api.post(`/scoring/show-event-completed/${eventId}`),
-    showNextRound: (eventId) => api.post(`/scoring/show-next-round/${eventId}`), // ⭐ NEW
+    showNextRound: (eventId) => api.post(`/scoring/show-next-round/${eventId}`), // ⭐ ADD THIS
     clearSplash: (eventId) => api.post(`/scoring/clear-splash/${eventId}`),
     nextRound: (eventId) => api.post(`/scoring/next-round/${eventId}`),
     getSplash: (eventId) => api.get(`/event/splash/${eventId}`)
