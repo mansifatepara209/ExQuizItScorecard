@@ -33,6 +33,7 @@ function AudienceScoreboard({ eventId = 1 }) {
             const newRankings = rankingsRes.data;
             const prevRanks = previousRanksRef.current;
 
+            // ⭐ Detect rank changes
             const changes = {};
             newRankings.forEach(team => {
                 const prevRank = prevRanks[team.id];
@@ -57,7 +58,9 @@ function AudienceScoreboard({ eventId = 1 }) {
                 }
             });
             setRankChanges(visibleChanges);
-            setTimeout(() => setRankChanges({}), 2500);
+
+            // ⭐ Arrows disappear after 2000ms
+            setTimeout(() => setRankChanges({}), 2000);
         } catch (error) {
             console.error('Error loading scoreboard:', error);
         } finally {
@@ -84,12 +87,7 @@ function AudienceScoreboard({ eventId = 1 }) {
 
     if (rankings.length === 0) {
         return (
-            <div className="min-h-screen flex flex-col relative overflow-hidden">
-                <div
-                    className="absolute inset-0 bg-cover bg-center"
-                    style={{ backgroundImage: 'url(/brand/eqi_poster_26.webp)' }}
-                />
-                <div className="absolute inset-0 bg-white/55" />
+            <div className="min-h-screen bg-quiz-primary flex flex-col relative overflow-hidden">
                 <div className="relative z-10 flex flex-col flex-1">
                     <BrandHeader subtitle="Live Scoreboard" />
                     <div className="flex-1 flex items-center justify-center">
@@ -119,17 +117,13 @@ function AudienceScoreboard({ eventId = 1 }) {
         { team: topThree[2], position: 3 }
     ].filter(p => p.team);
 
-    // ⭐ BIG FONTS, compact layout
     const S = {
         1: {
-            // Header
             statusBadge: 'text-base md:text-lg px-5 py-2',
             infoLabel: 'text-xs md:text-sm',
             infoValue: 'text-xl md:text-2xl',
             questionNum: 'text-3xl md:text-4xl',
-            // Section headers
             sectionHead: 'text-lg md:text-2xl',
-            // Podium
             podiumRank: 'text-3xl md:text-4xl',
             podiumName: 'text-2xl md:text-4xl',
             podiumMeta: 'text-base md:text-lg',
@@ -137,7 +131,6 @@ function AudienceScoreboard({ eventId = 1 }) {
             podiumPts: 'text-sm md:text-base',
             miniStat: 'text-xl md:text-2xl',
             miniLabel: 'text-xs md:text-sm',
-            // All Teams
             listRank: 'text-2xl md:text-3xl',
             listName: 'text-xl md:text-2xl',
             listMeta: 'text-sm md:text-base',
@@ -168,17 +161,8 @@ function AudienceScoreboard({ eventId = 1 }) {
     }[zoom];
 
     return (
-        <div className="min-h-screen text-quiz-text flex flex-col overflow-hidden relative">
+        <div className="min-h-screen bg-quiz-primary text-quiz-text flex flex-col overflow-hidden relative">
 
-            {/* Poster background */}
-            <div
-                className="fixed inset-0 bg-cover bg-center"
-                style={{ backgroundImage: 'url(/brand/eqi_poster_26.webp)' }}
-                aria-hidden="true"
-            />
-            <div className="fixed inset-0 bg-white/55" aria-hidden="true" />
-
-            {/* Foreground */}
             <div className="relative z-10 flex flex-col flex-1">
 
                 {/* Zoom toggle */}
@@ -251,10 +235,10 @@ function AudienceScoreboard({ eventId = 1 }) {
                         <div className="flex-shrink-0">
                             <div className="flex items-center gap-3 mb-2 px-1">
                                 <Crown size={zoom === 1 ? 28 : 36} className="text-quiz-orange" />
-                                <h2 className={`${S.sectionHead} font-black uppercase tracking-widest text-white drop-shadow-md`}>
+                                <h2 className={`${S.sectionHead} font-black uppercase tracking-widest text-quiz-muted`}>
                                     Top Performers
                                 </h2>
-                                <div className="flex-1 h-1 bg-white/50"></div>
+                                <div className="flex-1 h-1 bg-quiz-border"></div>
                             </div>
 
                             <div className="grid grid-cols-3 gap-2 md:gap-3">
@@ -281,14 +265,14 @@ function AudienceScoreboard({ eventId = 1 }) {
                                                 </div>
                                             )}
 
+                                            {/* ⭐ UP / DOWN arrow — top-left */}
                                             {change && (
                                                 <div className={`absolute top-2 left-2 rounded-full flex items-center justify-center shadow-lg z-10 ${change === 'up' ? 'bg-green-500' : 'bg-red-500'} ${zoom === 1 ? 'w-8 h-8 md:w-10 md:h-10' : 'w-12 h-12'}`}>
-                                                    {change === 'up' ? <ArrowUp size={zoom === 1 ? 18 : 24} className="text-white" /> : <ArrowDown size={zoom === 1 ? 18 : 24} className="text-white" />}
+                                                    {change === 'up' ? <ArrowUp size={zoom === 1 ? 18 : 24} className="text-white" strokeWidth={3} /> : <ArrowDown size={zoom === 1 ? 18 : 24} className="text-white" strokeWidth={3} />}
                                                 </div>
                                             )}
 
                                             <div className={`${zoom === 1 ? 'p-3 md:p-4' : 'p-5 md:p-6'}`}>
-                                                {/* Rank badge + icon inline */}
                                                 <div className="flex items-center gap-3 mb-2">
                                                     <div className={`inline-flex items-center justify-center rounded-xl bg-gradient-to-br ${config.gradient} text-white font-black shadow-lg ${S.podiumRank} ${zoom === 1 ? 'w-12 h-12 md:w-14 md:h-14' : 'w-16 h-16 md:w-20 md:h-20'}`}>
                                                         {team.rank}
@@ -322,20 +306,20 @@ function AudienceScoreboard({ eventId = 1 }) {
                         </div>
                     )}
 
-                    {/* ⭐ ALL TEAMS — COMPACT CARDS, BIG FONTS */}
+                    {/* ⭐ ALL TEAMS */}
                     {rest.length > 0 && (
                         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
                             <div className="flex items-center gap-3 mb-2 px-1">
-                                <Users size={zoom === 1 ? 28 : 36} className="text-white drop-shadow-md" />
-                                <h2 className={`${S.sectionHead} font-black uppercase tracking-widest text-white drop-shadow-md`}>All Teams</h2>
-                                <div className="flex-1 h-1 bg-white/50"></div>
-                                <span className={`${S.sectionHead} text-white font-black drop-shadow-md`}>{rest.length} teams</span>
+                                <Users size={zoom === 1 ? 28 : 36} className="text-quiz-muted" />
+                                <h2 className={`${S.sectionHead} font-black uppercase tracking-widest text-quiz-muted`}>All Teams</h2>
+                                <div className="flex-1 h-1 bg-quiz-border"></div>
+                                <span className={`${S.sectionHead} text-quiz-muted font-black`}>{rest.length} teams</span>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto">
-                                <div className={`grid gap-2 md:gap-3 ${rest.length <= 6 ? 'grid-cols-1 md:grid-cols-2' :
-                                        rest.length <= 12 ? 'grid-cols-1 md:grid-cols-2' :
-                                            'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
+                            <div className="flex-1 overflow-y-auto pt-3">
+                                <div className={`grid gap-3 md:gap-4 ${rest.length <= 6 ? 'grid-cols-1 md:grid-cols-2' :
+                                    rest.length <= 12 ? 'grid-cols-1 md:grid-cols-2' :
+                                        'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
                                     }`}>
                                     {rest.map((team) => {
                                         const isCurrent = currentTeam?.id === team.id;
@@ -350,18 +334,17 @@ function AudienceScoreboard({ eventId = 1 }) {
                                                     </div>
                                                 )}
 
+                                                {/* ⭐ UP / DOWN arrow — top-right */}
                                                 {change && (
-                                                    <div className={`absolute -top-2 -right-2 rounded-full flex items-center justify-center shadow-lg ${change === 'up' ? 'bg-green-500' : 'bg-red-500'} ${zoom === 1 ? 'w-7 h-7' : 'w-9 h-9'}`}>
-                                                        {change === 'up' ? <ArrowUp size={zoom === 1 ? 16 : 20} className="text-white" /> : <ArrowDown size={zoom === 1 ? 16 : 20} className="text-white" />}
+                                                    <div className={`absolute -top-2 -right-2 rounded-full flex items-center justify-center shadow-lg z-10 ${change === 'up' ? 'bg-green-500' : 'bg-red-500'} ${zoom === 1 ? 'w-7 h-7' : 'w-9 h-9'}`}>
+                                                        {change === 'up' ? <ArrowUp size={zoom === 1 ? 16 : 20} className="text-white" strokeWidth={3} /> : <ArrowDown size={zoom === 1 ? 16 : 20} className="text-white" strokeWidth={3} />}
                                                     </div>
                                                 )}
 
-                                                {/* Rank badge — SMALLER */}
                                                 <div className={`flex-shrink-0 rounded-lg bg-quiz-accent border-2 border-quiz-border flex items-center justify-center font-black text-quiz-text ${S.listRank} ${zoom === 1 ? 'w-12 h-12 md:w-14 md:h-14' : 'w-16 h-16 md:w-20 md:h-20'}`}>
                                                     {team.rank}
                                                 </div>
 
-                                                {/* Name + Meta + Stats */}
                                                 <div className="flex-1 min-w-0">
                                                     <h3 className={`${S.listName} font-black text-quiz-text truncate leading-tight`}>
                                                         {team.name}
@@ -378,7 +361,6 @@ function AudienceScoreboard({ eventId = 1 }) {
                                                     </div>
                                                 </div>
 
-                                                {/* Score */}
                                                 <div className="text-right flex-shrink-0">
                                                     <div className={`${S.listScore} font-black text-[#C2185B] leading-none`}>{team.total_score}</div>
                                                     <div className={`${S.listPts} uppercase tracking-widest text-quiz-muted mt-0.5 font-black`}>pts</div>

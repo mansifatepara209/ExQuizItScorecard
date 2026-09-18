@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { EventService } from './services/api';
 import Sidebar from './components/Sidebar';
-import ThemeToggle from './components/ThemeToggle';
 import TeamManager from './components/TeamManager';
 import RoundManager from './components/RoundManager';
 import ExcelImport from './components/ExcelImport';
@@ -157,13 +156,14 @@ function App() {
         onResetAll={handleResetAll}
       />
 
-      {/* Top Bar */}
+      {/* ⭐ Top Bar — Centered Event Name + Status */}
       <div
         className={`fixed top-0 right-0 z-30 h-14 md:h-16 bg-quiz-secondary/95 backdrop-blur border-b border-quiz-border transition-all duration-300 ${collapsed ? 'lg:left-20' : 'lg:left-64'
           } left-0`}
       >
-        <div className="flex items-center justify-between h-full px-3 md:px-6">
-          <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
+        <div className="flex items-center justify-between h-full px-3 md:px-6 relative">
+          {/* LEFT — Mobile menu button only */}
+          <div className="flex items-center gap-2 min-w-0 flex-shrink-0 z-10">
             <button
               onClick={() => setMobileOpen(true)}
               className="lg:hidden p-2 rounded-lg bg-quiz-accent border border-quiz-border text-quiz-text flex-shrink-0"
@@ -171,33 +171,30 @@ function App() {
             >
               <Menu size={20} />
             </button>
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] text-quiz-muted uppercase tracking-wider font-semibold hidden md:block">
-                Event
-              </p>
-              <div className="flex items-center gap-2">
-                <p className="text-sm md:text-lg font-bold text-quiz-text truncate">
-                  {eventState?.name || 'No Event'}
-                </p>
-
-                {isEventLive && (
-                  <span className="px-2 py-0.5 bg-green-500/20 border border-green-500/40 rounded-full text-[10px] md:text-[11px] font-bold text-green-400 uppercase tracking-wider flex-shrink-0">
-                    ● Live
-                  </span>
-                )}
-
-                {Boolean(eventState?.is_paused) && (
-                  <span className="px-2 py-0.5 bg-yellow-500/20 border border-yellow-500/40 rounded-full text-[10px] md:text-[11px] font-bold text-yellow-400 uppercase tracking-wider flex-shrink-0">
-                    ⏸ Paused
-                  </span>
-                )}
-              </div>
-            </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <ThemeToggle />
+          {/* ⭐ CENTER — Event name + status badge */}
+          <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-3 md:gap-4 pointer-events-none">
+            <h1 className="text-xl md:text-3xl lg:text-4xl font-black text-quiz-gold tracking-tight whitespace-nowrap">
+              {eventState?.name || 'Ex-Quiz-It'}
+            </h1>
+
+            {isEventLive && (
+              <span className="px-3 py-1 md:px-4 md:py-1.5 bg-green-500/20 border-2 border-green-500 rounded-full text-xs md:text-sm font-black text-green-600 uppercase tracking-wider flex items-center gap-1.5 flex-shrink-0">
+                <span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full bg-green-500 animate-pulse"></span>
+                LIVE
+              </span>
+            )}
+
+            {Boolean(eventState?.is_paused) && (
+              <span className="px-3 py-1 md:px-4 md:py-1.5 bg-yellow-500/20 border-2 border-yellow-500 rounded-full text-xs md:text-sm font-black text-yellow-600 uppercase tracking-wider flex items-center gap-1.5 flex-shrink-0">
+                ⏸ PAUSED
+              </span>
+            )}
           </div>
+
+          {/* RIGHT — Reserved space (empty for balance) */}
+          <div className="flex items-center gap-2 flex-shrink-0 z-10 min-w-[40px]"></div>
         </div>
       </div>
 
@@ -259,6 +256,7 @@ function App() {
         <ResultsExport
           eventId={eventId}
           eventState={eventState}
+          onUpdate={forceRefresh}
           onClose={() => setShowExport(false)}
         />
       )}

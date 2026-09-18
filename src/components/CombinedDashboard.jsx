@@ -510,24 +510,23 @@ function CombinedDashboard({ eventId = 1, eventState, onUpdate }) {
                         </p>
                     </div>
 
-                    {/* ⭐ CONTENT — fills remaining height, no scroll for ≤ 9 teams */}
-                    <div className="flex-1 flex flex-col min-h-0 p-3 gap-3 overflow-hidden">
-                        {/* ⭐ CONTENT — scrollable */}
-                        {/* <div className="flex-1 overflow-y-auto p-3 space-y-3"> */}
+                    {/* ⭐ SCROLLABLE CONTENT — scrollbar appears if content overflows */}
+                    <div className="flex-1 overflow-y-auto p-3 space-y-3">
 
-                        {/* Top 3 — takes 2 parts of remaining space */}
+                        {/* Top 3 */}
                         {topThree.length > 0 && (
-                            <div className="flex-[2] min-h-0 flex flex-col">
-                                <div className="flex items-center gap-2 mb-2 flex-shrink-0">
+                            <div>
+                                <div className="flex items-center gap-2 mb-2">
                                     <Crown size={18} className="text-quiz-orange" />
                                     <h3 className="text-sm font-black uppercase tracking-widest text-quiz-muted">Top Performers</h3>
                                     <div className="flex-1 h-0.5 bg-gradient-to-r from-quiz-border to-transparent"></div>
                                 </div>
-                                <div className="flex-1 grid grid-cols-3 gap-3">
+                                <div className="grid grid-cols-3 gap-2 md:gap-3">
                                     {topThree.map((team, idx) => {
                                         const position = idx + 1;
                                         const isActive = currentTeam?.id === team.id;
                                         const change = rankChanges[team.id];
+                                        const counts = getCounts(team.id);
                                         const config = {
                                             1: { border: 'border-yellow-400', medal: '🥇', gradient: 'from-yellow-500 to-yellow-700' },
                                             2: { border: 'border-gray-400', medal: '🥈', gradient: 'from-gray-400 to-gray-600' },
@@ -536,7 +535,7 @@ function CombinedDashboard({ eventId = 1, eventState, onUpdate }) {
 
                                         return (
                                             <div key={team.id}
-                                                className={`relative overflow-visible bg-white rounded-lg border-2 ${config.border} p-3 md:p-4 shadow-sm flex flex-col justify-between ${isActive ? 'ring-2 ring-[#C2185B]' : ''}`}>
+                                                className={`relative overflow-visible bg-white rounded-lg border-2 ${config.border} p-3 shadow-sm flex flex-col ${isActive ? 'ring-2 ring-[#C2185B]' : ''}`}>
                                                 <div className="absolute top-2 right-2 text-2xl md:text-3xl">{config.medal}</div>
 
                                                 {isActive && (
@@ -551,8 +550,7 @@ function CombinedDashboard({ eventId = 1, eventState, onUpdate }) {
                                                     </div>
                                                 )}
 
-                                                {/* Top row: rank + name */}
-                                                <div className="flex items-center gap-2 mb-2">
+                                                <div className="flex items-center gap-2 mb-1.5">
                                                     <div className={`w-10 h-10 md:w-12 md:h-12 rounded-md bg-gradient-to-br ${config.gradient} text-white font-black flex items-center justify-center text-xl md:text-2xl`}>
                                                         {team.rank}
                                                     </div>
@@ -562,33 +560,31 @@ function CombinedDashboard({ eventId = 1, eventState, onUpdate }) {
                                                     </div>
                                                 </div>
 
-                                                {/* Score */}
                                                 <div className="flex items-baseline gap-1.5 mb-2">
                                                     <span className="text-3xl md:text-4xl font-black text-[#C2185B] leading-none">{team.total_score}</span>
                                                     <span className="text-[10px] md:text-xs text-quiz-muted uppercase font-black">pts</span>
                                                 </div>
 
-                                                {/* ⭐ Stats row — T / ✓ / ✗ / P / ⚖ */}
                                                 <div className="flex justify-between items-center pt-2 border-t border-quiz-border mt-auto">
                                                     <div className="text-center flex-1">
                                                         <p className="text-[9px] uppercase text-quiz-muted font-bold leading-tight">T</p>
-                                                        <p className="text-xs md:text-sm font-black text-quiz-text leading-tight">{getCounts(team.id).total}</p>
+                                                        <p className="text-xs md:text-sm font-black text-quiz-text leading-tight">{counts.total}</p>
                                                     </div>
                                                     <div className="text-center flex-1">
                                                         <p className="text-[9px] uppercase text-green-600 font-bold leading-tight">✓</p>
-                                                        <p className="text-xs md:text-sm font-black text-green-600 leading-tight">{getCounts(team.id).correct}</p>
+                                                        <p className="text-xs md:text-sm font-black text-green-600 leading-tight">{counts.correct}</p>
                                                     </div>
                                                     <div className="text-center flex-1">
                                                         <p className="text-[9px] uppercase text-red-600 font-bold leading-tight">✗</p>
-                                                        <p className="text-xs md:text-sm font-black text-red-600 leading-tight">{getCounts(team.id).wrong}</p>
+                                                        <p className="text-xs md:text-sm font-black text-red-600 leading-tight">{counts.wrong}</p>
                                                     </div>
                                                     <div className="text-center flex-1">
                                                         <p className="text-[9px] uppercase text-quiz-muted font-bold leading-tight">P</p>
-                                                        <p className="text-xs md:text-sm font-black text-quiz-muted leading-tight">{getCounts(team.id).pass}</p>
+                                                        <p className="text-xs md:text-sm font-black text-quiz-muted leading-tight">{counts.pass}</p>
                                                     </div>
                                                     <div className="text-center flex-1">
                                                         <p className="text-[9px] uppercase text-red-800 font-bold leading-tight">⚖</p>
-                                                        <p className="text-xs md:text-sm font-black text-red-800 leading-tight">{getCounts(team.id).penalty}</p>
+                                                        <p className="text-xs md:text-sm font-black text-red-800 leading-tight">{counts.penalty}</p>
                                                     </div>
                                                 </div>
                                             </div>
@@ -598,21 +594,20 @@ function CombinedDashboard({ eventId = 1, eventState, onUpdate }) {
                             </div>
                         )}
 
-                        {/* All Teams — takes 3 parts of remaining space */}
+                        {/* All Teams */}
                         {rest.length > 0 && (
-                            <div className="flex-[3] min-h-0 flex flex-col">
-                                <div className="flex items-center gap-2 mb-2 flex-shrink-0">
+                            <div>
+                                <div className="flex items-center gap-2 mb-2">
                                     <Users size={18} className="text-quiz-muted" />
                                     <h3 className="text-sm font-black uppercase tracking-widest text-quiz-muted">All Teams</h3>
                                     <div className="flex-1 h-0.5 bg-gradient-to-r from-quiz-border to-transparent"></div>
                                     <span className="text-xs text-quiz-muted font-bold">{rest.length}</span>
                                 </div>
 
-                                <div className={`flex-1 min-h-0 grid gap-3 content-stretch ${rest.length <= 2 ? 'grid-cols-2' :
-                                    rest.length <= 4 ? 'grid-cols-2' :
-                                        rest.length <= 6 ? 'grid-cols-3' :
-                                            rest.length <= 9 ? 'grid-cols-3' :
-                                                'grid-cols-4'
+                                <div className={`grid gap-2.5 ${rest.length <= 2 ? 'grid-cols-2' :
+                                    rest.length <= 6 ? 'grid-cols-3' :
+                                        rest.length <= 9 ? 'grid-cols-3' :
+                                            'grid-cols-4'
                                     }`}>
                                     {rest.map((team) => {
                                         const isActive = currentTeam?.id === team.id;
@@ -621,7 +616,7 @@ function CombinedDashboard({ eventId = 1, eventState, onUpdate }) {
 
                                         return (
                                             <div key={team.id}
-                                                className={`relative overflow-visible flex flex-col gap-2 p-3 md:p-4 rounded-lg bg-white border-2 ${isActive
+                                                className={`relative overflow-visible flex flex-col gap-2 p-3 rounded-lg bg-white border-2 ${isActive
                                                     ? `border-[#C2185B] ring-2 ring-[#C2185B]/40 ${isBuzzerRound ? 'border-purple-600 ring-purple-500/40' : ''}`
                                                     : 'border-quiz-border'
                                                     } shadow-sm`}>
@@ -638,7 +633,6 @@ function CombinedDashboard({ eventId = 1, eventState, onUpdate }) {
                                                     </div>
                                                 )}
 
-                                                {/* Top row: rank + name + score */}
                                                 <div className="flex items-center gap-3">
                                                     <div className="flex-shrink-0 w-10 h-10 md:w-12 md:h-12 rounded-lg bg-quiz-accent border border-quiz-border flex items-center justify-center font-black text-lg md:text-2xl text-quiz-text">
                                                         {team.rank}
@@ -655,7 +649,6 @@ function CombinedDashboard({ eventId = 1, eventState, onUpdate }) {
                                                     </div>
                                                 </div>
 
-                                                {/* ⭐ Bottom row: Stats (T / ✓ / ✗ / P / ⚖) */}
                                                 <div className="flex justify-between items-center pt-2 border-t border-quiz-border">
                                                     <div className="text-center flex-1">
                                                         <p className="text-[9px] md:text-[10px] uppercase text-quiz-muted font-bold leading-tight">T</p>
